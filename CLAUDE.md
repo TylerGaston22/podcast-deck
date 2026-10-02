@@ -24,5 +24,4 @@ Guidance for Claude Code when working in this repo.
 
 ## Next up
 
-1. Match the deck's colors (`theme.py`) to the stream launcher project.
-2. Per-episode recording split hotkey.
+1. Per-episode recording split hotkey.

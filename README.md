@@ -338,7 +338,7 @@ Roughly in priority order. The first two remove the most editing.
       each of the 3–4 episodes in a session is its own file.
 - [ ] **Episode markers.** A hotkey that writes a timestamp and label to a text file while recording,
       giving exact cut points for anything that does need trimming.
-- [ ] **Match the stream launcher's color scheme.** Update `theme.py` to share the palette from the
+- [x] **Match the stream launcher's color scheme.** Update `theme.py` to share the palette from the
       stream launcher project.
 - [ ] **"Now showing" overlay.** Briefly shows the layout name in OBS when it changes, so swaps are easy
       to spot when reviewing a recording.
@@ -385,6 +385,10 @@ Ideas welcome: open an issue.
 
 - Mouse back-button key corrected from `"x1"` to `"x"` (the name the `mouse` library actually uses).
   The forward button, `"x2"`, was already right.
+
+**Changes**
+
+- Deck window colors in `theme.py` now match the stream launcher's palette.
 
 ## License
 
