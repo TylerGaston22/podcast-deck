@@ -1,11 +1,11 @@
-"""Colors for the deck window. Swap these to match another project's palette."""
-BG        = "#1E2230"   # window background
-KEY       = "#2A3042"   # idle button
-KEY_HOVER = "#363D52"
-INK       = "#E8EAF0"   # text on idle button
-INK_DIM   = "#8F97AD"   # status text, hotkey hints
-LIT       = "#F2B33D"   # active layout button
-LIT_INK   = "#231A05"   # text on active button
-REC       = "#E4553F"   # recording
+"""Colors for the deck window, matched to the stream launcher's palette (src/renderer/src/styles.css)."""
+BG        = "#0C0F14"   # window background            (--ground)
+KEY       = "#1B212A"   # idle button                  (--raised)
+KEY_HOVER = "#212833"   #                              (--hover)
+INK       = "#E6EBF1"   # text on idle button          (--text)
+INK_DIM   = "#A4AFBE"   # status text, hotkey hints    (--text-2)
+LIT       = "#7CC4FF"   # active layout button         (--accent)
+LIT_INK   = "#06121E"   # text on active button        (--accent-ink)
+REC       = "#FF3D4F"   # recording                    (--live)
 FONT      = ("Segoe UI", 12, "bold")
 STATUS_FONT = ("Segoe UI", 10)
