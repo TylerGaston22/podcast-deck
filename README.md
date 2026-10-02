@@ -159,7 +159,7 @@ while keeping their aspect ratio.
 
 ## Setup
 
-Do this once per computer.
+Do this once per computer. In the paths below, `<you>` is your Windows username.
 
 1. **Turn on OBS's WebSocket server.** In OBS: Tools → WebSocket Server Settings → tick Enable WebSocket
    server → set a password → OK. Leave the port at 4455.
@@ -167,30 +167,30 @@ Do this once per computer.
 2. **Get the code.**
 
    ```
-   git clone https://github.com/TylerGaston22/podcast-deck.git C:\podcast-deck
+   git clone https://github.com/TylerGaston22/podcast-deck.git C:\Users\<you>\source\repos\podcast-deck
    ```
 
-   Or download the ZIP from GitHub and extract it to `C:\podcast-deck`.
+   Or download the ZIP from GitHub and extract it to `C:\Users\<you>\source\repos\podcast-deck`.
 
 3. **Create your config.**
 
    ```
-   copy C:\podcast-deck\config.example.py C:\podcast-deck\config.py
+   copy C:\Users\<you>\source\repos\podcast-deck\config.example.py C:\Users\<you>\source\repos\podcast-deck\config.py
    ```
 
-   Open `C:\podcast-deck\config.py` and set at least `OBS_PASSWORD` and the `CAMS` names. See the
+   Open `C:\Users\<you>\source\repos\podcast-deck\config.py` and set at least `OBS_PASSWORD` and the `CAMS` names. See the
    [configuration reference](#configuration-reference) for everything else.
 
 4. **Install the Python packages.**
 
    ```
-   py -m pip install -r C:\podcast-deck\requirements.txt
+   py -m pip install -r C:\Users\<you>\source\repos\podcast-deck\requirements.txt
    ```
 
 5. **Build the layouts.** With OBS open:
 
    ```
-   py C:\podcast-deck\build_scenes.py
+   py C:\Users\<you>\source\repos\podcast-deck\build_scenes.py
    ```
 
    You'll see each source and layout listed as it's created.
@@ -202,7 +202,7 @@ Do this once per computer.
    - Optional: in the Just Us scene, right-click each cam → Transform → Edit Transform → tick
      **Crop to Bounding Box** so the cams fill their panels instead of letterboxing.
 
-7. **Make a desktop shortcut.** Right-click `C:\podcast-deck\Podcast Deck.bat` → Send to → Desktop
+7. **Make a desktop shortcut.** Right-click `C:\Users\<you>\source\repos\podcast-deck\Podcast Deck.bat` → Send to → Desktop
    (create shortcut). Rename it if you like, and change its icon under Properties → Change Icon.
 
 ## Every session
@@ -211,7 +211,7 @@ Do this once per computer.
 2. Double-click the **Podcast Deck** shortcut, or run:
 
    ```
-   py C:\podcast-deck\deck.py
+   py C:\Users\<you>\source\repos\podcast-deck\deck.py
    ```
 
 3. A small window appears and stays on top of everything. Pick your starting layout, press Record, and
@@ -232,7 +232,7 @@ hotkey. The currently active layout is highlighted, and the Record button turns 
 
 ## Configuration reference
 
-Everything lives in `C:\podcast-deck\config.py`, copied from `config.example.py`.
+Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied from `config.example.py`.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -251,7 +251,7 @@ Everything lives in `C:\podcast-deck\config.py`, copied from `config.example.py`
 After changing anything except the hotkeys and mouse buttons, run `build_scenes.py` again. Hotkey and
 mouse changes only need the deck restarted.
 
-**Appearance:** `C:\podcast-deck\theme.py` holds the deck window's colors and fonts.
+**Appearance:** `C:\Users\<you>\source\repos\podcast-deck\theme.py` holds the deck window's colors and fonts.
 
 ## Project structure
 
@@ -272,10 +272,10 @@ podcast-deck/
 ## Sharing it without Python
 
 ```
-C:\podcast-deck\build_exe.bat
+C:\Users\<you>\source\repos\podcast-deck\build_exe.bat
 ```
 
-This installs PyInstaller and produces `C:\podcast-deck\dist\PodcastDeck.exe`. Give someone the `.exe`
+This installs PyInstaller and produces `C:\Users\<you>\source\repos\podcast-deck\dist\PodcastDeck.exe`. Give someone the `.exe`
 with a filled-in `config.py` in the same folder and they can run the deck without Python. They still
 need OBS, and someone still needs to run `build_scenes.py` once on their machine (or set up the scenes
 by hand).
@@ -288,7 +288,7 @@ Tools → WebSocket Server Settings in OBS. The deck retries every two seconds, 
 own once OBS is ready.
 
 **"No config.py yet"**
-Copy `C:\podcast-deck\config.example.py` to `C:\podcast-deck\config.py` and fill it in.
+Copy `C:\Users\<you>\source\repos\podcast-deck\config.example.py` to `C:\Users\<you>\source\repos\podcast-deck\config.py` and fill it in.
 
 **Hotkeys don't work in a specific game**
 If the game runs as administrator, Windows blocks hotkeys from programs that aren't. Run the deck as
@@ -363,9 +363,9 @@ Ideas welcome: open an issue.
   commit there; test on a Windows PC with OBS:
 
   ```
-  git -C C:\podcast-deck pull
-  py C:\podcast-deck\build_scenes.py
-  py C:\podcast-deck\deck.py
+  git -C C:\Users\<you>\source\repos\podcast-deck pull
+  py C:\Users\<you>\source\repos\podcast-deck\build_scenes.py
+  py C:\Users\<you>\source\repos\podcast-deck\deck.py
   ```
 
 - **Never commit `config.py`.** It holds the OBS password and is in `.gitignore`.

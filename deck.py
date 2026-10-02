@@ -5,7 +5,7 @@ plus global hotkeys (ctrl+alt+1..9 for layouts, ctrl+alt+r for record) and
 optional mouse side buttons, all of which work while a game has focus. Buttons are read live from OBS, so any scene you
 add later shows up automatically.
 
-    py C:\\podcast-deck\\deck.py
+    py C:\\Users\\<you>\\source\\repos\\podcast-deck\\deck.py
 """
 import threading
 import tkinter as tk

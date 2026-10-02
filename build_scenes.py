@@ -3,7 +3,7 @@
 Run once (and again any time you change config.py). Safe to re-run: it deletes
 and recreates only the scenes it owns, and leaves your sources alone.
 
-    py C:\\podcast-deck\\build_scenes.py
+    py C:\\Users\\<you>\\source\\repos\\podcast-deck\\build_scenes.py
 """
 import sys
 
