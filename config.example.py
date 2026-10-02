@@ -28,10 +28,10 @@ MARGIN = 24
 HOTKEY_PREFIX = "ctrl+alt+"
 RECORD_HOTKEY = "ctrl+alt+r"
 
-# Optional: side buttons on the mouse. "x1" = back button, "x2" = forward button,
+# Optional: side buttons on the mouse. "x" = back button, "x2" = forward button,
 # "middle" = scroll-wheel click. Map each to a scene name, or "record" to toggle
 # recording, or "next" to cycle through the layouts. Leave empty to ignore the mouse.
 MOUSE_BUTTONS = {
-    "x1": "next",
+    "x": "next",
     "x2": "record",
 }
