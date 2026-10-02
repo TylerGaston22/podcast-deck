@@ -40,16 +40,20 @@ Nothing has been run against real OBS yet. Do this before building anything new.
 Planned features, in priority order. The first two remove the most editing.
 
 - [ ] **Per-episode recording split.** One hotkey that stops and immediately restarts recording, so
-      each episode in a 3–4 episode session lands in its own file.
+      each of the 3–4 episodes in a session is its own file.
 - [ ] **Episode markers.** A hotkey that writes a timestamp and label to a text file while recording,
-      for exact cut points.
-- [ ] **"Now showing" overlay.** Briefly shows the layout name in OBS when it changes.
-- [ ] **Automatic audio ducking.** Lower game audio in Browser + Cams so clips are clear, and restore
-      it afterward.
-- [ ] **Layout preview.** `build_scenes.py --preview` draws all layouts to a PNG for tuning without OBS.
-- [ ] **Per-show layout sets.** Presets for game, movie, and TV episodes, switchable from the deck.
-- [ ] **Discord video as cam sources.** First-class support for hosts on a Discord call.
-- [ ] **Intro and outro scenes.** Title cards with the episode name.
+      giving exact cut points for anything that does need trimming.
+- [ ] **"Now showing" overlay.** Briefly shows the layout name in OBS when it changes, so swaps are easy
+      to spot when reviewing a recording.
+- [ ] **Automatic audio ducking.** Lower game audio when switching to Browser + Cams so clips and
+      trailers are clear, and restore it on the way back.
+- [ ] **Layout preview.** A `--preview` option on `build_scenes.py` that draws all layouts to a PNG,
+      so cam sizes and positions can be tuned without opening OBS.
+- [ ] **Per-show layout sets.** Separate presets for game, movie, and TV episodes, switched from the
+      deck.
+- [ ] **Discord video as cam sources.** First-class support for people who join over a Discord call
+      instead of a local webcam.
+- [ ] **Episode intro and outro scenes.** Title cards with the episode name, set before recording.
 - [ ] **Settings window.** Edit config from the deck instead of a Python file.
 
 ## Layout templates
