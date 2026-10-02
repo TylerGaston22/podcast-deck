@@ -55,6 +55,9 @@ Planned features, in priority order. The first two remove the most editing.
       instead of a local webcam.
 - [ ] **Episode intro and outro scenes.** Title cards with the episode name, set before recording.
 - [ ] **Settings window.** Edit config from the deck instead of a Python file.
+- [ ] **Auto-updating app (later).** Ship the deck as an installed app that updates itself, so when a
+      new version is released, everyone using it gets the update without re-downloading or
+      re-running setup.
 
 ## Layout templates
 
