@@ -4,7 +4,9 @@ Guidance for Claude Code when working in this repo.
 
 ## Start here
 
-- Read `README.md` for the project idea, goals, and roadmap before making changes.
+- Read `README.md` for the project idea and goals before making changes.
+- `TODO.md` is the single list of work still to do, including the roadmap. Check items off there as
+  they're done.
 
 ## Rules
 
@@ -24,4 +26,4 @@ Guidance for Claude Code when working in this repo.
 
 ## Next up
 
-1. Per-episode recording split hotkey.
+See `TODO.md`. Test against real OBS first, then the per-episode recording split hotkey.

@@ -332,26 +332,8 @@ still show up on the deck.
 
 ## Roadmap
 
-Roughly in priority order. The first two remove the most editing.
-
-- [ ] **Split recording per episode.** One hotkey that stops and immediately restarts recording, so
-      each of the 3–4 episodes in a session is its own file.
-- [ ] **Episode markers.** A hotkey that writes a timestamp and label to a text file while recording,
-      giving exact cut points for anything that does need trimming.
-- [x] **Match the stream launcher's color scheme.** Update `theme.py` to share the palette from the
-      stream launcher project.
-- [ ] **"Now showing" overlay.** Briefly shows the layout name in OBS when it changes, so swaps are easy
-      to spot when reviewing a recording.
-- [ ] **Automatic audio ducking.** Lower game audio when switching to Browser + Cams so clips and
-      trailers are clear, and restore it on the way back.
-- [ ] **Layout preview.** A `--preview` option on `build_scenes.py` that draws all layouts to a PNG,
-      so cam sizes and positions can be tuned without opening OBS.
-- [ ] **Per-show layout sets.** Separate presets for game, movie, and TV episodes, switched from the
-      deck.
-- [ ] **Discord video as cam sources.** First-class support for people who join over a Discord call
-      instead of a local webcam.
-- [ ] **Episode intro and outro scenes.** Title cards with the episode name, set before recording.
-- [ ] **Settings window.** Edit config from the deck instead of a Python file.
+Planned features, in priority order, live in [TODO.md](TODO.md) along with the rest of the work
+still to do.
 
 Ideas welcome: open an issue.
 
