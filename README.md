@@ -104,7 +104,7 @@ switching behind controls you can use without leaving the game.
 
 ## What's built so far
 
-- [x] `build_scenes.py` creates all inputs once in a hidden library scene, then builds six layouts that
+- [x] `build_scenes.py` creates all inputs once in a hidden library scene, then builds seven layouts that
       reference them. Safe to re-run: it rebuilds only the layouts it owns and never touches your
       sources or other scenes.
 - [x] Cam positions are calculated from the number of people in `CAMS`, so adding or removing a person
@@ -118,6 +118,10 @@ switching behind controls you can use without leaving the game.
 - [x] Mouse side-button bindings: by default, back cycles to the next layout and forward toggles
       recording. Configurable or disableable.
 - [x] Any scene added by hand in OBS shows up on the deck automatically with the next free hotkey.
+- [x] Background menu on the deck: pick a saved picture, add a new one, or go back to the plain color,
+      with no OBS menus. `ctrl+alt+b` steps through the saved pictures.
+- [x] Play link box on the deck: paste a YouTube link and it plays in the Video + Cams layout, with its
+      sound recorded. Videos that can't be embedded get a clear message instead of a blank box.
 - [x] `Podcast Deck.bat` launches the deck with no console window, so it works as a desktop shortcut.
 - [x] `build_exe.bat` packages the deck into a single `PodcastDeck.exe` with PyInstaller.
 - [x] Colors and fonts pulled into `theme.py` so the look can be changed in one place.
@@ -135,9 +139,15 @@ switching behind controls you can use without leaving the game.
 | **Gameplay + Cams** | Game full screen, everyone small in a row at the bottom right | Playing and talking |
 | **Browser + Cams** | A browser window full screen, cams bottom right | Trailers, YouTube clips, articles, reviews |
 | **Desktop + Cams** | The whole monitor, cams bottom right | Anything that isn't a single window |
-| **Just Us** | Everyone the same size, split evenly across the screen | Discussion, intros, outros |
+| **Just Us** | Everyone the same size, split evenly across the background picture | Discussion, intros, outros |
 | **Gameplay Only** | Game, nothing else | Cinematics, moments that need the whole screen |
-| **Be Right Back** | Plain backdrop with "Be right back" | Breaks between episodes |
+| **Be Right Back** | Background picture with "Be right back" | Breaks between episodes |
+| **Video + Cams** | A YouTube video in a fixed box, cams in a column beside it, background picture behind | Trailers and clips without a browser window on screen |
+
+The background picture comes from the deck's **Background** menu. Until one is picked, these layouts use
+a plain dark color. The video comes from the deck's **Play link…** box. The Video + Cams box size and
+position are `VIDEO_X`, `VIDEO_Y`, `VIDEO_W`, and `VIDEO_H` in `config.py`, and the cams always go on
+the side with more room so they never cover the video.
 
 The Discord voice overlay, if configured, sits on top of every "+ Cams" layout and Just Us.
 
@@ -226,9 +236,24 @@ All three work at the same time, and all of them work while a game has focus.
 | Switch to layout 1–9 | Click the layout | `ctrl+alt+1` … `ctrl+alt+9` | — |
 | Next layout | — | — | Back button |
 | Start / stop recording | Click Record | `ctrl+alt+r` | Forward button |
+| Next background picture | — | `ctrl+alt+b` | — (can be set to `"next background"`) |
+| Pick or add a background | Background ▾ | — | — |
+| Play a YouTube link | Play link… | — | — |
 
 Hotkey numbers follow the order of the scenes in OBS, and each button in the deck window shows its
 hotkey. The currently active layout is highlighted, and the Record button turns red while recording.
+
+**Background ▾** lists every saved picture; click one to switch to it, even mid-recording. **Add
+picture…** opens a file picker and copies the picture into the `backgrounds` folder, so it keeps
+working if the original moves and stays in the menu from then on. **Plain color** turns the picture
+off, and **Open backgrounds folder** lets you add or delete pictures by hand. OBS remembers the
+current picture between sessions.
+
+**Play link…** opens a small box. Paste a YouTube link (normal, `youtu.be`, Shorts, or live; a `t=`
+start time is kept) and press Enter. A link already on the clipboard is pasted in for you. The video
+plays in the Video + Cams box and its sound is recorded. **Stop video** clears the box. The **Restart
+the video when I switch away** option decides what happens when you leave Video + Cams: off, the video
+keeps playing silently and picks up wherever it has got to; on, it starts over each time you come back.
 
 ## Configuration reference
 
@@ -246,7 +271,10 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 | `MARGIN` | `24` | Gap between cams and from the screen edges |
 | `HOTKEY_PREFIX` | `"ctrl+alt+"` | Layout hotkeys are this plus a number |
 | `RECORD_HOTKEY` | `"ctrl+alt+r"` | Start/stop recording |
-| `MOUSE_BUTTONS` | back → next, forward → record | Keys: `"x"` (back), `"x2"` (forward), `"middle"`. Values: a scene name, `"next"`, or `"record"`. `{}` turns it off |
+| `BACKGROUND_HOTKEY` | `"ctrl+alt+b"` | Next picture in the `backgrounds` folder |
+| `VIDEO_X`, `VIDEO_Y` | `48, 162` | Top-left corner of the video box in Video + Cams |
+| `VIDEO_W`, `VIDEO_H` | `1344, 756` | Size of the video box. Leave room beside it for the cams |
+| `MOUSE_BUTTONS` | back → next, forward → record | Keys: `"x"` (back), `"x2"` (forward), `"middle"`. Values: a scene name, `"next"`, `"record"`, or `"next background"`. `{}` turns it off |
 
 After changing anything except the hotkeys and mouse buttons, run `build_scenes.py` again. Hotkey and
 mouse changes only need the deck restarted.
@@ -259,6 +287,9 @@ mouse changes only need the deck restarted.
 podcast-deck/
 ├── build_scenes.py     Creates the sources and layout scenes in OBS from config.py
 ├── deck.py             The control window: buttons, hotkeys, mouse buttons
+├── media.py            Background pictures and YouTube link handling for the deck
+├── player.html         The page OBS shows in the Video + Cams box
+├── backgrounds/        Pictures added from the deck (git-ignored)
 ├── config.example.py   Template config. Copy to config.py (git-ignored)
 ├── theme.py            Deck window colors and fonts
 ├── requirements.txt    Python dependencies
@@ -310,8 +341,16 @@ Turn on Crop to Bounding Box for each cam (Setup step 6).
 Replace their `Cam - …` source with a Window Capture of the Discord call window, or use Discord
 StreamKit's video widget as a Browser source.
 
+**"OBS doesn't have the new sources yet"**
+The Background menu and Play link box need the `Background` and `Video Panel` sources. Run
+`build_scenes.py` again to add them. It leaves your existing sources and their settings alone.
+
+**"This video can't be played here"**
+The video's owner has turned off playing it outside YouTube, or it's private, deleted, or
+age-restricted. Open it in a browser and use Browser + Cams instead.
+
 **Re-running `build_scenes.py` reset my layout tweaks**
-It rebuilds the six layouts from config every time. Make permanent changes in `LAYOUTS` in
+It rebuilds the seven layouts from config every time. Make permanent changes in `LAYOUTS` in
 `build_scenes.py`, or build your own scenes in OBS under different names. Those are never touched and
 still show up on the deck.
 
@@ -371,6 +410,13 @@ Ideas welcome: open an issue.
 **Changes**
 
 - Deck window colors in `theme.py` now match the stream launcher's palette.
+
+**Background pictures and video links**
+
+- Background menu and `ctrl+alt+b` hotkey for changing the background picture from the deck.
+- Play link box that plays a pasted YouTube link in the new Video + Cams layout, with recorded sound.
+- New Video + Cams layout, with the video box size and position in `config.py`.
+- Just Us and Be Right Back now show the background picture.
 
 ## License
 

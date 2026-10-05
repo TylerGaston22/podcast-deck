@@ -10,19 +10,26 @@ Nothing has been run against real OBS yet. Do this before building anything new.
 - [ ] Open OBS → Tools → WebSocket Server Settings → enable it and set a password.
 - [ ] Create `config.py` from `config.example.py` and fill in the OBS password and cam names (real
       names only ever go in `config.py`, which is git-ignored).
-- [ ] Install dependencies:
+- [x] Install dependencies:
       `py -m pip install -r C:\Users\<you>\source\repos\podcast-deck\requirements.txt`
-- [ ] Run `py C:\Users\<you>\source\repos\podcast-deck\build_scenes.py` and confirm all six layouts
+- [ ] Run `py C:\Users\<you>\source\repos\podcast-deck\build_scenes.py` and confirm all seven layouts
       appear in OBS without errors.
 - [ ] In OBS, point each `Cam - …` source at a real webcam and `Browser Window` at the browser.
 - [ ] Launch `Podcast Deck.bat` and check:
   - [ ] The window opens with no console and stays on top.
   - [ ] Colors look right: blue for the active layout, red for recording.
   - [ ] Clicking a layout switches the OBS scene.
-  - [ ] `ctrl+alt+1`–`6` switch layouts, including while a full-screen game has focus.
+  - [ ] `ctrl+alt+1`–`7` switch layouts, including while a full-screen game has focus.
   - [ ] `ctrl+alt+r` starts and stops recording.
   - [ ] Mouse back button cycles layouts; forward button toggles recording.
   - [ ] Closing and reopening OBS: the deck reconnects on its own.
+  - [ ] Background ▾ → Add picture…: the picture shows behind Just Us, Video + Cams, and Be Right
+        Back, and is still there after restarting OBS.
+  - [ ] `ctrl+alt+b` steps through saved pictures, including while a game has focus.
+  - [ ] Play link…: a pasted YouTube link plays in the Video + Cams box, with sound in the recording.
+  - [ ] A link to a video that blocks embedding shows the "can't be played here" message.
+  - [ ] Restart option off: leaving and returning to Video + Cams picks up mid-video. On: it starts over.
+  - [ ] Video + Cams: cams sit beside the video box without covering it.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
 

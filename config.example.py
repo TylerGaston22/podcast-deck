@@ -23,14 +23,21 @@ DISCORD_STREAMKIT_URL = ""
 SMALL_CAM_W, SMALL_CAM_H = 320, 180
 MARGIN = 24
 
+# Video + Cams layout: the box the video plays in (left edge, top edge, width, height).
+# The cams stack in a column on whichever side has more room, so leave space beside it.
+VIDEO_X, VIDEO_Y = 48, 162
+VIDEO_W, VIDEO_H = 1344, 756
+
 # Global hotkeys for deck.py — work even while a game is full screen.
 # Scene N (in OBS order) = HOTKEY_PREFIX + N, e.g. ctrl+alt+1 ... ctrl+alt+9.
 HOTKEY_PREFIX = "ctrl+alt+"
 RECORD_HOTKEY = "ctrl+alt+r"
+BACKGROUND_HOTKEY = "ctrl+alt+b"   # next picture in the backgrounds folder
 
 # Optional: side buttons on the mouse. "x" = back button, "x2" = forward button,
 # "middle" = scroll-wheel click. Map each to a scene name, or "record" to toggle
-# recording, or "next" to cycle through the layouts. Leave empty to ignore the mouse.
+# recording, "next" to cycle through the layouts, or "next background" to cycle
+# through the background pictures. Leave empty to ignore the mouse.
 MOUSE_BUTTONS = {
     "x": "next",
     "x2": "record",
