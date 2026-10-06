@@ -22,6 +22,7 @@ replacing it.
 - [Setup](#setup)
 - [Every session](#every-session)
 - [Controls](#controls)
+- [Hosts joining online](#hosts-joining-online)
 - [Configuration reference](#configuration-reference)
 - [Project structure](#project-structure)
 - [Sharing it without Python](#sharing-it-without-python)
@@ -122,6 +123,9 @@ switching behind controls you can use without leaving the game.
       with no OBS menus. `ctrl+alt+b` steps through the saved pictures.
 - [x] Play link box on the deck: paste a YouTube link and it plays in the Video + Cams layout, with its
       sound recorded. Videos that can't be embedded get a clear message instead of a blank box.
+- [x] Hosts joining online: each runs the deck on their own PC, connected to the recording PC's deck over Tailscale,
+      and drags their own camera around on a screen map. The admin can give guests full control of
+      everything else too. Remote cameras come in through VDO.Ninja links.
 - [x] `Podcast Deck.bat` launches the deck with no console window, so it works as a desktop shortcut.
 - [x] `build_exe.bat` packages the deck into a single `PodcastDeck.exe` with PyInstaller.
 - [x] Colors and fonts pulled into `theme.py` so the look can be changed in one place.
@@ -255,13 +259,75 @@ plays in the Video + Cams box and its sound is recorded. **Stop video** clears t
 the video when I switch away** option decides what happens when you leave Video + Cams: off, the video
 keeps playing silently and picks up wherever it has got to; on, it starts over each time you come back.
 
+**The screen map** under the layout buttons shows where each camera sits in the current layout. Drag a
+camera to move it, or drag the small square in its corner to resize it. OBS follows along live, and the
+new spot is remembered for that layout only, so moving yourself in Gameplay + Cams doesn't change Just
+Us. **Reset camera** puts the selected camera back where the layout normally has it. On the admin deck
+you can drag anyone's camera; click one to select it. Guests can only drag their own.
+
+**Guests get full control** (admin deck only) gives guests' decks everything the admin deck has:
+layouts, Record, Background ▾, Play link…, moving anyone's camera, and the hotkeys for all of them.
+It's off by default, and turning it off takes it all away again within a couple of seconds. Only the
+admin can flip it.
+
+## Hosts joining online
+
+One PC runs OBS and records: the admin. Everyone else runs the deck on their own PC as a guest. Only
+the admin's deck ever touches OBS. Guests' decks send it requests over Tailscale, and it checks each
+one before doing anything. Guests never get OBS or its password.
+
+**1. Get each remote camera into OBS with VDO.Ninja.** It's free and runs in the browser.
+- Each remote host opens `https://vdo.ninja/?push=<id>` in their browser and allows the camera and mic.
+  Pick a long, hard-to-guess `<id>` per person, keep it the same every session, and keep it private:
+  anyone with it can watch that camera.
+- On the admin PC, list them in `config.py`, then run `build_scenes.py` again:
+
+  ```python
+  REMOTE_CAMS = {
+      "Host 2": "https://vdo.ninja/?view=<Host 2's id>",
+  }
+  ```
+
+  That camera becomes a browser source showing their video, with their sound recorded.
+
+**2. Connect the PCs with Tailscale.** [Tailscale](https://tailscale.com) links PCs privately, as if
+they were on the same home network, with nothing opened on your router. Install it on every PC, then
+share the admin PC with each guest from the Tailscale admin console. The deck only works over
+Tailscale: the admin's deck listens on its Tailscale address and nowhere else, and guests' decks
+refuse to connect to anything that isn't a Tailscale address. Never forward ports on your router for
+the deck or OBS.
+
+Optional, for extra safety: in Tailscale's access rules, let shared guests reach only the deck's port
+(`4460`) on the admin PC, so nothing else on that PC is reachable from their side.
+
+**3. Invite each guest.** On the admin's deck, click **Guests…**, then **Copy invite** next to their
+name and send it to them privately. **New** replaces an invite (the old one stops working) and
+**Remove** takes it away.
+
+**4. Set up each guest's `config.py`:**
+
+```python
+ADMIN = False
+INVITE = "podcast-deck://100.x.y.z:4460/…"   # the invite the admin sent you
+```
+
+That's all a guest needs. They don't need OBS, they don't run `build_scenes.py`, and they never see the
+OBS password. Their deck shows their name in the title bar once it connects.
+
+People in the same room sharing one camera share one name in `CAMS` (for example `"Couch"`). They can
+all use the same invite.
+
+**With full control,** a guest's links and backgrounds are carried out by the admin's deck on the admin
+PC. A guest's Background ▾ lists the pictures saved on the admin's PC; adding new pictures is done on the
+admin's deck.
+
 ## Configuration reference
 
 Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied from `config.example.py`.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `OBS_HOST` | `"localhost"` | Where OBS is running |
+| `OBS_HOST` | `"localhost"` | Always `"localhost"`: the deck only controls the OBS on its own PC |
 | `OBS_PORT` | `4455` | OBS WebSocket port |
 | `OBS_PASSWORD` | `"CHANGE_ME"` | OBS WebSocket password |
 | `CANVAS_W`, `CANVAS_H` | `1920, 1080` | Must match OBS Settings → Video → Base Resolution |
@@ -274,6 +340,11 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 | `BACKGROUND_HOTKEY` | `"ctrl+alt+b"` | Next picture in the `backgrounds` folder |
 | `VIDEO_X`, `VIDEO_Y` | `48, 162` | Top-left corner of the video box in Video + Cams |
 | `VIDEO_W`, `VIDEO_H` | `1344, 756` | Size of the video box. Leave room beside it for the cams |
+| `REMOTE_CAMS` | `{}` | VDO.Ninja view link for each person joining online, by cam name. Admin PC only |
+| `ADMIN` | `True` | `True` on the PC that runs OBS and records. `False` on guests' PCs |
+| `ME` | `""` | Admin only, optional: your cam name, so the screen map selects it first |
+| `INVITE` | `""` | Guests only: the invite the admin sent you |
+| `DECK_PORT` | `4460` | Admin only: the port guests' decks connect to, over Tailscale only |
 | `MOUSE_BUTTONS` | back → next, forward → record | Keys: `"x"` (back), `"x2"` (forward), `"middle"`. Values: a scene name, `"next"`, `"record"`, or `"next background"`. `{}` turns it off |
 
 After changing anything except the hotkeys and mouse buttons, run `build_scenes.py` again. Hotkey and
@@ -288,6 +359,12 @@ podcast-deck/
 ├── build_scenes.py     Creates the sources and layout scenes in OBS from config.py
 ├── deck.py             The control window: buttons, hotkeys, mouse buttons
 ├── media.py            Background pictures and YouTube link handling for the deck
+├── positions.py        Camera spots and the guest permission switch, kept in OBS
+├── control.py          What the deck can do: on this PC's OBS (admin) or through the admin's deck (guests)
+├── link.py             The admin deck's door for guests: Tailscale only, invites, permission checks
+├── SETUP.md            Exact setup steps, click by click
+├── NOTES.md            How hosts joining online works
+├── TODO.md             Work still to do, including the roadmap
 ├── player.html         The page OBS shows in the Video + Cams box
 ├── backgrounds/        Pictures added from the deck (git-ignored)
 ├── config.example.py   Template config. Copy to config.py (git-ignored)
@@ -309,7 +386,7 @@ C:\Users\<you>\source\repos\podcast-deck\build_exe.bat
 This installs PyInstaller and produces `C:\Users\<you>\source\repos\podcast-deck\dist\PodcastDeck.exe`. Give someone the `.exe`
 with a filled-in `config.py` in the same folder and they can run the deck without Python. They still
 need OBS, and someone still needs to run `build_scenes.py` once on their machine (or set up the scenes
-by hand).
+by hand). Guests joining online don't need OBS at all; see [Hosts joining online](#hosts-joining-online).
 
 ## Troubleshooting
 
@@ -349,10 +426,24 @@ The Background menu and Play link box need the `Background` and `Video Panel` so
 The video's owner has turned off playing it outside YouTube, or it's private, deleted, or
 age-restricted. Open it in a browser and use Browser + Cams instead.
 
+**A guest's deck says "Can't reach the admin's deck"**
+Check that Tailscale is running on both PCs, that the admin PC is shared with the guest in Tailscale,
+and that the admin's deck is open. The first time, Windows Firewall on the admin PC may ask whether
+Python can accept connections; allow it on private networks.
+
+**A guest's deck says "The admin hasn't invited you"**
+Their invite was replaced or removed. The admin clicks **Guests…** → **Copy invite** and sends a new one.
+
+**The Guests window says Tailscale isn't running**
+Start Tailscale on the admin PC, then reopen the deck. The deck won't accept guests any other way.
+
+**A guest can't drag their camera**
+Their camera has to be in the current layout. Without full control they can only drag their own.
+
 **Re-running `build_scenes.py` reset my layout tweaks**
-It rebuilds the seven layouts from config every time. Make permanent changes in `LAYOUTS` in
-`build_scenes.py`, or build your own scenes in OBS under different names. Those are never touched and
-still show up on the deck.
+It rebuilds the seven layouts from config every time, but cameras moved from a deck are put back where
+they were dragged to. For other changes, edit `LAYOUTS` in `build_scenes.py`, or build your own scenes
+in OBS under different names. Those are never touched and still show up on the deck.
 
 ## Design decisions
 
@@ -417,6 +508,16 @@ Ideas welcome: open an issue.
 - Play link box that plays a pasted YouTube link in the new Video + Cams layout, with recorded sound.
 - New Video + Cams layout, with the video box size and position in `config.py`.
 - Just Us and Be Right Back now show the background picture.
+
+**Hosts joining online**
+
+- Admin and guest decks: only the admin's deck touches OBS. Guests' decks send it requests over
+  Tailscale with a personal invite, and it checks each one. Guests never get the OBS password.
+- Screen map on the deck for dragging and resizing cameras, remembered per layout and kept when
+  `build_scenes.py` runs again. Reset button returns a camera to its usual spot.
+- Admin switch that gives guests full control: layouts, recording, background, video links, and
+  every camera.
+- `REMOTE_CAMS` for bringing in remote cameras with VDO.Ninja.
 
 ## License
 

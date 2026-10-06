@@ -7,8 +7,12 @@ and recreates only the scenes it owns, and leaves your sources alone.
 """
 import os
 import sys
+import time
 
 import obsws_python as obs
+from obsws_python.error import OBSSDKRequestError
+
+import positions
 
 try:
     import config as cfg
@@ -42,8 +46,15 @@ SOURCES = {
                                           "reroute_audio": True, "shutdown": False}),
     "BRB Text":      ("text_gdiplus",    {"text": "Be right back", "font": {"face": "Segoe UI", "size": 120, "style": "Bold"}}),
 }
+# Cams for people in the room are webcams. Cams for people joining online show their
+# VDO.Ninja link instead (REMOTE_CAMS in config.py), with their sound recorded.
+REMOTE_CAMS = getattr(cfg, "REMOTE_CAMS", {})
 for name in cfg.CAMS:
-    SOURCES[f"Cam - {name}"] = ("dshow_input", {})
+    if name in REMOTE_CAMS:
+        SOURCES[f"Cam - {name}"] = ("browser_source", {"url": REMOTE_CAMS[name], "width": 1280, "height": 720,
+                                                       "reroute_audio": True})
+    else:
+        SOURCES[f"Cam - {name}"] = ("dshow_input", {})
 if cfg.DISCORD_STREAMKIT_URL:
     SOURCES["Discord Voice"] = ("browser_source", {"url": cfg.DISCORD_STREAMKIT_URL, "width": W, "height": H})
 
@@ -124,35 +135,57 @@ def main():
         return hits[-1]
 
     scenes = {s["sceneName"] for s in cl.get_scene_list().scenes}
-    inputs = {i["inputName"] for i in cl.get_input_list().inputs}
+    inputs = {i["inputName"]: i["inputKind"] for i in cl.get_input_list().inputs}
 
     # 1. Library scene with every source created exactly once.
     if LIB not in scenes:
         cl.create_scene(LIB)
     for name, (kind, settings) in SOURCES.items():
+        if name in inputs and name.startswith("Cam - ") and not inputs[name].startswith(kind):
+            cl.remove_input(name)             # switched between a webcam and a remote link
+            print(f"  replaced source {name}")
+            del inputs[name]
         if name in inputs:
             continue
-        cl.create_input(LIB, name, resolve(kind), settings, False)
+        for _ in range(20):                   # a just-removed source can hold its name for a moment
+            try:
+                cl.create_input(LIB, name, resolve(kind), settings, False)
+                break
+            except OBSSDKRequestError as e:
+                if e.code != 601:             # 601: a source with that name still exists
+                    raise
+                time.sleep(0.1)
         print(f"  created source  {name}")
+    for name, url in REMOTE_CAMS.items():     # keep remote links current if they change
+        if f"Cam - {name}" in SOURCES:
+            cl.set_input_settings(f"Cam - {name}", {"url": url}, True)
     # Keep the video page sized to the box and pointed at this folder's player.html.
     cl.set_input_settings("Video Panel", {k: SOURCES["Video Panel"][1][k]
                                           for k in ("local_file", "width", "height")}, True)
 
     # 2. Layout scenes, rebuilt from scratch.
+    item_ids = {}
     for scene, items in LAYOUTS.items():
         if scene in scenes:
             cl.remove_scene(scene)
         cl.create_scene(scene)
         for src, x, y, bw, bh in items:
             item_id = cl.create_scene_item(scene, src, True).scene_item_id
-            cl.set_scene_item_transform(scene, item_id, {
-                "positionX": x, "positionY": y,
-                "alignment": 5,                       # top-left anchor
-                "boundsType": "OBS_BOUNDS_SCALE_OUTER" if src in FILL else "OBS_BOUNDS_SCALE_INNER",
-                "boundsAlignment": 0,                 # center within box
-                "boundsWidth": bw, "boundsHeight": bh,
-            })
+            cl.set_scene_item_transform(scene, item_id, positions.box_transform(x, y, bw, bh, fill=src in FILL))
+            item_ids[scene, src] = item_id
         print(f"  built layout    {scene}")
+
+    # 3. Remember each layout's usual cam spots (the deck's Reset button goes back to them), then
+    #    put back any cams people have dragged somewhere else from their decks.
+    positions.write(cl, positions.DEFAULTS, {
+        scene: {src: [x, y, bw, bh] for src, x, y, bw, bh in items if src.startswith("Cam - ")}
+        for scene, items in LAYOUTS.items()})
+    for name in cfg.CAMS:
+        cam = f"Cam - {name}"
+        for scene, box in positions.read(cl, positions.cam_slot(cam), {}).items():
+            if (scene, cam) in item_ids:
+                cl.set_scene_item_transform(scene, item_ids[scene, cam], positions.box_transform(*box))
+                print(f"  kept moved cam  {cam} in {scene}")
 
     cl.set_current_program_scene("Gameplay + Cams")
     print("\nDone. In OBS: double-click each 'Cam - …' source to pick its webcam, "

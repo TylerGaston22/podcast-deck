@@ -1,6 +1,7 @@
 config.py
 backgrounds/
 now_playing.js
+guests.json
 __pycache__/
 *.pyc
 build/

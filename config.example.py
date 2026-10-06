@@ -10,9 +10,25 @@ CANVAS_W, CANVAS_H = 1920, 1080
 
 # One cam per person, in the order they appear left → right.
 # Each becomes a "Cam - <name>" source. Pick the actual device in OBS afterwards
-# (double-click the source). If someone's video comes through a Discord call
-# instead of a local webcam, swap that source for a Window Capture of Discord.
+# (double-click the source). People sharing one camera in the same room share
+# one name here, e.g. "Couch".
 CAMS = ["Host 1", "Host 2", "Host 3"]
+
+# People joining online: their VDO.Ninja view link, by cam name. They open
+# https://vdo.ninja/?push=<their id> in their browser; this shows that camera.
+# Only needed on the PC that runs OBS. Run build_scenes.py again after changing it.
+REMOTE_CAMS = {
+    # "Host 2": "https://vdo.ninja/?view=<their id>",
+}
+
+# Who is using this deck. On the PC that runs OBS and records, keep ADMIN = True;
+# ME is optional there (your cam name, so the screen map selects it first).
+# On a guest's PC, set ADMIN = False and paste the invite the admin sent you into
+# INVITE. Guests don't need OBS or its password. See "Hosts joining online" in the README.
+ADMIN = True
+ME = ""
+INVITE = ""
+DECK_PORT = 4460   # admin: where guests' decks connect, over Tailscale only
 
 # Discord StreamKit "Voice Widget" URL — shows everyone's Discord icon and lights
 # it up when they talk. Get it at https://streamkit.discord.com/overlay (pick your

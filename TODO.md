@@ -30,15 +30,36 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] A link to a video that blocks embedding shows the "can't be played here" message.
   - [ ] Restart option off: leaving and returning to Video + Cams picks up mid-video. On: it starts over.
   - [ ] Video + Cams: cams sit beside the video box without covering it.
+  - [ ] Screen map: dragging a camera moves it in OBS, the corner square resizes it, and Reset camera
+        puts it back.
+  - [ ] Re-running `build_scenes.py` keeps cameras where they were dragged.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
+
+## Test with hosts online
+
+Needs at least one other person on another PC.
+
+- [ ] Install Tailscale on both PCs and share the admin PC with the guest.
+- [ ] Guest opens their VDO.Ninja push link; add their view link to `REMOTE_CAMS` on the admin PC and
+      rerun `build_scenes.py`. Their video and sound show up in their `Cam - …` source.
+- [ ] Admin: Guests… → Copy invite, send it. Guest puts it in `INVITE` with `ADMIN = False` and starts
+      the deck. It connects and the title bar shows their name.
+- [ ] Guest drags and resizes their camera; it moves in OBS within a moment. They can't grab anyone
+      else's.
+- [ ] The guest's layout buttons are greyed out, and Record, Background, and Play link are hidden,
+      until the admin ticks "Guests get full control". Then they all work.
+- [ ] Unticking it takes the controls away again within a couple of seconds.
+- [ ] Guests… → Remove: the guest's deck stops working right away.
+- [ ] Two people dragging at the same time don't undo each other's moves.
+- [ ] Note in the README how laggy it feels over the internet, and anything else surprising.
 
 ## Try with the real setup
 
 - [ ] Discord StreamKit voice overlay: get the widget URL, put it in `config.py`, rerun
       `build_scenes.py`, and check that the icons light up when people talk.
-- [ ] Decide how remote hosts' video comes in (local webcams vs. Discord call window capture) and
-      update the cam sources and README to match.
+- [ ] Decide how remote hosts' video comes in. VDO.Ninja is built in now (`REMOTE_CAMS`); try it
+      against Discord call window capture and update the README with whichever works better.
 - [ ] Just Us layout: turn on Crop to Bounding Box for each cam and check that they fill their panels.
 - [ ] Use the deck during an actual game to make sure the hotkeys don't clash with game controls.
 
@@ -69,7 +90,7 @@ Planned features, in priority order. The first two remove the most editing.
 ## Layout templates
 
 - [ ] Get the planned layout templates and rebuild `LAYOUTS` in `build_scenes.py` to match. The
-      current six are a starting point.
+      current seven are a starting point.
 
 ## Sharing with the other hosts
 
