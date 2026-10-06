@@ -240,12 +240,15 @@ move only affects that layout and only lasts for this session: every session sta
 spots. **Reset camera** puts the selected camera back on its default spot. On the admin deck you can drag
 anyone's camera; click one to select it. Guests can only drag their own.
 
-**Settings…** (admin) also has:
-- **Show names on cams**: a name tag in the corner of each cam, in every layout. It moves with the cam.
-- **Save camera spots as default** and **Reset cameras to default**: place the cameras how you like, then
-  save, and every session starts that way.
-- **Backgrounds**: pick a layout for each saved background. Choosing that background (from the menu,
-  `ctrl+alt+b`, or Paste link) switches to its layout too. New pictures appear in the list by themselves.
+**Settings…** (admin) has four tabs:
+- **Cameras**: webcams, the browser window, **Show names on cams** (a name tag in each cam's corner that
+  moves with it), **Save camera spots as default** / **Reset cameras to default**, and **Rebuild layouts**.
+- **Backgrounds**: every layout that shows a background, each with a **Default** background and ticked
+  extras. Switching to a layout puts up its default; picking another lasts until you switch layouts or the
+  session ends. **Add picture…** saves a picture of your own and adds it to that layout. On a layout with
+  extras, Background ▾ lists them first (★ marks the default) and `ctrl+alt+b` steps through just those.
+  Background ▾ also has **Make this the default for …** for the current layout.
+- **Guests**: invites. **Help**: How it works.
 
 **Guests get full control** (admin deck only) gives guests' decks everything the admin deck has:
 layouts, Record, Background ▾, Play link…, moving anyone's camera, and the hotkeys for all of them.
@@ -488,7 +491,9 @@ Ideas welcome: open an issue.
 
 - Name tags on cams, shown or hidden from Settings.
 - Camera moves last for the session only; Settings saves or resets the default spots.
-- Each saved background can switch to a layout of its own when it's picked.
+- Each layout can have a default background and extra ones, set in Settings → Backgrounds, with your
+  own uploaded pictures. Switching to a layout puts up its default.
+- Settings is split into tabs: Cameras, Backgrounds, Guests, Help.
 - Video + Cams now has the video on the right and the cams stacked down the left.
 
 **Background videos and what's on**

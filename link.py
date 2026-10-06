@@ -259,7 +259,7 @@ class LinkServer:
         if action == "toggle_record":
             return local.toggle_record()
         if action == "backgrounds":
-            return list(local.backgrounds())
+            return local.backgrounds()
         if action == "set_background":
             path = args.get("path")
             if path != "" and path not in media.list_backgrounds():   # only the admin's saved pictures

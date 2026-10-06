@@ -8,7 +8,7 @@ REALM = "OBS_WEBSOCKET_DATA_REALM_PROFILE"
 GUESTS_FULL_CONTROL = "podcast_deck.guests_full_control"   # True: guests get every admin control
 DEFAULTS = "podcast_deck.default_positions"     # {layout: {cam source: box}}, written by build_scenes.py
 NAME_TAGS = "podcast_deck.name_tags"            # show names on cams (default on)
-BG_LAYOUTS = "podcast_deck.bg_layouts"          # {background picture file name: layout to switch to}
+LAYOUT_BGS = "podcast_deck.layout_backgrounds"  # {layout: {"default": picture file name, "extras": [file names]}}
 
 
 def cam_slot(cam):

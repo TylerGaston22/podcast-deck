@@ -263,7 +263,7 @@ class Deck:
 
     # --- Settings -----------------------------------------------------------
     def settings_box(self):
-        """Admin: cameras, browser window, rebuild, guests. Guest: change invite. Both: how it works."""
+        """Admin: tabs for Cameras, Backgrounds, Guests, and Help. Guest: change invite, and Help."""
         win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
         win.title("Settings")
         win.attributes("-topmost", True)
@@ -271,29 +271,50 @@ class Deck:
         win.resizable(False, False)
         win.bind("<Escape>", lambda _e: win.destroy())
 
-        def heading(text):
-            tk.Label(win, text=text, bg=BG, fg=INK, font=FONT, anchor="w").pack(fill="x", pady=(10, 4))
+        def heading(parent, text, first=False):
+            tk.Label(parent, text=text, bg=BG, fg=INK, font=FONT, anchor="w").pack(
+                fill="x", pady=(0 if first else 12, 4))
 
-        def note(text, color=INK_DIM):
-            tk.Label(win, text=text, bg=BG, fg=color, font=STATUS_FONT, anchor="w", justify="left",
-                     wraplength=420).pack(fill="x")
+        def note(parent, text, color=INK_DIM):
+            tk.Label(parent, text=text, bg=BG, fg=color, font=STATUS_FONT, anchor="w", justify="left",
+                     wraplength=440).pack(fill="x")
+
+        # Tabs: a row of small buttons, the chosen one lit, showing one page at a time.
+        tabs = tk.Frame(win, bg=BG)
+        tabs.pack(fill="x", pady=(0, 10))
+        body = tk.Frame(win, bg=BG, width=460)
+        body.pack(fill="both", expand=True)
+        pages, buttons = {}, {}
+
+        def show(name):
+            for n, page in pages.items():
+                page.pack_forget()
+                buttons[n].config(bg=KEY, fg=INK)
+            pages[name].pack(fill="both", expand=True)
+            buttons[name].config(bg=LIT, fg=LIT_INK)
+
+        def page(name):
+            pages[name] = tk.Frame(body, bg=BG)
+            buttons[name] = self.small_key(tabs, name, lambda: show(name))
+            buttons[name].pack(side="left", padx=(0, 4))
+            return pages[name]
 
         if ADMIN:
-            heading("Cameras")
-            cams = tk.Frame(win, bg=BG)
+            cams_page = page("Cameras")
+            heading(cams_page, "Webcams", first=True)
+            cams = tk.Frame(cams_page, bg=BG)
             cams.pack(fill="x")
             self.call(lambda b: b.devices(), then=lambda found: self.fill_devices(cams, found))
             names = tk.BooleanVar(value=True)
-            tags = tk.Checkbutton(win, text="Show names on cams", variable=names, anchor="w", bg=BG, fg=INK_DIM,
-                                  selectcolor=KEY, activebackground=BG, activeforeground=INK, font=STATUS_FONT,
-                                  command=lambda: self.call(lambda b: b.set_name_tags(names.get()), then=lambda _: self.say(
-                                      "Names shown on cams" if names.get() else "Names hidden")))
-            tags.pack(fill="x", pady=(4, 0))
+            tk.Checkbutton(cams_page, text="Show names on cams", variable=names, anchor="w", bg=BG, fg=INK_DIM,
+                           selectcolor=KEY, activebackground=BG, activeforeground=INK, font=STATUS_FONT,
+                           command=lambda: self.call(lambda b: b.set_name_tags(names.get()), then=lambda _: self.say(
+                               "Names shown on cams" if names.get() else "Names hidden"))).pack(fill="x", pady=(4, 0))
 
-            heading("Default camera spots")
-            note("Moving a camera on the map only lasts for this session; each session starts from the "
-                 "defaults. To change the defaults, place the cameras where you want them, then save.")
-            row = tk.Frame(win, bg=BG)
+            heading(cams_page, "Default camera spots")
+            note(cams_page, "Moving a camera on the map only lasts for this session; each session starts from the "
+                            "defaults. To change the defaults, place the cameras where you want them, then save.")
+            row = tk.Frame(cams_page, bg=BG)
             row.pack(fill="x", pady=(4, 0))
             self.small_key(row, "Save camera spots as default", lambda: self.call(
                 lambda b: b.save_defaults(), then=lambda _: self.say("Camera spots saved as default"))).pack(side="left")
@@ -301,33 +322,41 @@ class Deck:
                 lambda b: b.reset_all(), then=lambda _: self.say("Cameras back on their default spots"))).pack(
                 side="left", padx=6)
 
-            heading("Backgrounds")
-            note("Picking a background also switches to the layout you choose for it here. New pictures show up "
-                 "in this list by themselves.")
-            pics = tk.Frame(win, bg=BG)
-            pics.pack(fill="x", pady=(4, 0))
-            self.call(lambda b: b.options(), then=lambda found: self.fill_options(pics, names, found))
-
-            heading("Layouts")
-            note("Rebuild after changing config.py. Cameras go back to their default spots.")
-            self.small_key(win, "Rebuild layouts", lambda: self.call(
+            heading(cams_page, "Layouts")
+            note(cams_page, "Rebuild after changing config.py. Cameras go back to their default spots.")
+            self.small_key(cams_page, "Rebuild layouts", lambda: self.call(
                 lambda b: b.rebuild(), then=lambda _: self.say("Layouts rebuilt"))).pack(anchor="w", pady=(4, 0))
 
-            heading("Guests")
+            bg_page = page("Backgrounds")
+            heading(bg_page, "Backgrounds for each layout", first=True)
+            note(bg_page, "Switching to a layout puts up its default background. Tick extras to have them at the "
+                          "top of Background ▾ on that layout. Add picture… saves your own.")
+            pics = tk.Frame(bg_page, bg=BG)
+            pics.pack(fill="x", pady=(8, 0))
+            self.call(lambda b: b.options(), then=lambda found: self.fill_options(pics, names, found))
+
+            guests_page = page("Guests")
+            heading(guests_page, "Guests", first=True)
             on = self.link and self.link.httpd
-            note(f"Guests connect over Tailscale ({self.link.ip}). Send each person their own invite, privately."
-                 if on else "Tailscale isn't running on this PC, so guests can't connect yet. Start Tailscale; "
-                            "the deck notices within ten seconds.", INK_DIM if on else REC)
-            rows = tk.Frame(win, bg=BG)
+            note(guests_page, f"Guests connect over Tailscale ({self.link.ip}). Send each person their own invite, "
+                              "privately." if on else "Tailscale isn't running on this PC, so guests can't connect "
+                              "yet. Start Tailscale; the deck notices within ten seconds.", INK_DIM if on else REC)
+            rows = tk.Frame(guests_page, bg=BG)
             rows.pack(fill="x", pady=(4, 0))
             self.fill_guests(rows, on)
         else:
-            heading("Invite")
-            note("Copy the new invite the admin sent you, then click Paste invite.")
-            self.small_key(win, "Paste invite", lambda: self.paste_invite(win)).pack(anchor="w", pady=(4, 0))
+            invite_page = page("Invite")
+            heading(invite_page, "Invite", first=True)
+            note(invite_page, "Copy the new invite the admin sent you, then click Paste invite.")
+            self.small_key(invite_page, "Paste invite", lambda: self.paste_invite(win)).pack(anchor="w", pady=(4, 0))
 
-        heading("Help")
-        self.small_key(win, "How it works", lambda: subprocess.Popen(["notepad.exe", NOTES])).pack(anchor="w")
+        help_page = page("Help")
+        heading(help_page, "Help", first=True)
+        note(help_page, "How hosts joining online works, what each deck can do, and how it's kept safe.")
+        self.small_key(help_page, "How it works", lambda: subprocess.Popen(["notepad.exe", NOTES])).pack(
+            anchor="w", pady=(4, 0))
+
+        show(next(iter(pages)))
         self.key(win, "Close", win.destroy).pack(anchor="e", pady=(14, 0))
 
     def fill_devices(self, frame, found):
@@ -354,22 +383,58 @@ class Deck:
             lambda v: self.call(lambda b: b.set_window(v), then=lambda _: self.say("Browser window set")))
 
     def fill_options(self, frame, names, found):
-        """Settings: the name tag switch, and a layout dropdown for each saved background."""
+        """Settings: the name tag switch, and for each layout that shows a background: its default, its extra
+        backgrounds (ticked), and Add picture… to save one of your own."""
         names.set(found["name_tags"])
-        if not found["pictures"]:
-            tk.Label(frame, text="No saved backgrounds yet. Add one with Background ▾ or Paste link.", bg=BG,
-                     fg=INK_DIM, font=STATUS_FONT, anchor="w").grid(row=0, column=0, sticky="w")
+        for w in frame.winfo_children():
+            w.destroy()
+        pics = found["pictures"]
+        label = lambda name: os.path.splitext(name)[0][:24]
+        for layout in found["layouts"]:
+            entry = found["layout_bgs"].get(layout, {})
+            box = tk.Frame(frame, bg=BG)
+            box.pack(fill="x", pady=(2, 8))
+            top = tk.Frame(box, bg=BG)
+            top.pack(fill="x")
+            tk.Label(top, text=layout, bg=BG, fg=INK, font=STATUS_FONT + ("bold",), anchor="w", width=16).pack(side="left")
+            tk.Label(top, text="Default", bg=BG, fg=INK_DIM, font=STATUS_FONT).pack(side="left")
+            names_shown = ["None"] + [label(p) for p in pics]
+            default = ttk.Combobox(top, values=names_shown, state="readonly", width=22)
+            default.set(label(entry["default"]) if entry.get("default") in pics else "None")
+            default.bind("<<ComboboxSelected>>", lambda _e, l=layout, d=default: self.call(
+                lambda b: b.set_layout_bgs(l, default="" if d.current() == 0 else pics[d.current() - 1]),
+                then=lambda _: self.say("Default background saved")))
+            default.pack(side="left", padx=6)
+            self.small_key(top, "Add picture…", lambda l=layout: self.add_layout_picture(frame, names, l)).pack(side="left")
+            if not pics:
+                continue
+            extras = tk.Frame(box, bg=BG)
+            extras.pack(fill="x", padx=(16, 0))
+            ticked = set(entry.get("extras", []))
+            for i, pic in enumerate(pics):
+                var = tk.BooleanVar(value=pic in ticked)
+                def toggle(l=layout, p=pic, v=var):
+                    chosen = set(found["layout_bgs"].setdefault(l, {"default": "", "extras": []}).get("extras", []))
+                    chosen = chosen | {p} if v.get() else chosen - {p}
+                    found["layout_bgs"][l]["extras"] = [x for x in pics if x in chosen]
+                    self.call(lambda b: b.set_layout_bgs(l, extras=found["layout_bgs"][l]["extras"]))
+                tk.Checkbutton(extras, text=label(pic), variable=var, command=toggle, bg=BG, fg=INK_DIM,
+                               selectcolor=KEY, activebackground=BG, activeforeground=INK, font=STATUS_FONT,
+                               anchor="w").grid(row=i // 3, column=i % 3, sticky="w", padx=(0, 8))
+        if not found["layouts"]:
+            tk.Label(frame, text="No layouts with a background yet. Click Rebuild layouts below.", bg=BG,
+                     fg=INK_DIM, font=STATUS_FONT, anchor="w").pack(fill="x")
+
+    def add_layout_picture(self, frame, names, layout):
+        """Settings → Add picture… for one layout: pick a picture of your own; it's saved and added."""
+        path = filedialog.askopenfilename(
+            parent=self.root, title=f"Choose a background for {layout}",
+            filetypes=[("Pictures", " ".join("*" + t for t in media.IMAGE_TYPES)), ("All files", "*.*")])
+        if not path:
             return
-        choices = ["No change"] + found["layouts"]
-        for r, pic in enumerate(found["pictures"]):
-            tk.Label(frame, text=os.path.splitext(pic)[0][:28], bg=BG, fg=INK, font=STATUS_FONT, anchor="w").grid(
-                row=r, column=0, sticky="w")
-            box = ttk.Combobox(frame, values=choices, state="readonly", width=28)
-            box.set(found["bg_layouts"].get(pic) or "No change")
-            box.bind("<<ComboboxSelected>>", lambda _e, p=pic, b=box: self.call(
-                lambda be: be.set_bg_layout(p, "" if b.get() == "No change" else b.get()),
-                then=lambda _: self.say("Saved")))
-            box.grid(row=r, column=1, padx=8, pady=2, sticky="w")
+        self.call(lambda b: b.add_layout_picture(layout, path), then=lambda name: (
+            self.say(f"{os.path.splitext(name)[0]} saved for {layout}"),
+            self.call(lambda b: b.options(), then=lambda found: self.fill_options(frame, names, found))))
 
     def fill_guests(self, rows, on):
         for w in rows.winfo_children():
@@ -548,15 +613,32 @@ class Deck:
     def background_menu(self):
         """Pop up the saved pictures, plus Add picture…, Plain color, and Open folder."""
         def show(found):
-            current, pics = found
-            current = os.path.normcase(current or "")
+            current = os.path.normcase(found["current"] or "")
+            default = os.path.normcase(found.get("default") or "")
+            mine = found.get("mine", [])
             m = tk.Menu(self.root, tearoff=0, bg=KEY, fg=INK, activebackground=LIT, activeforeground=LIT_INK,
                         font=STATUS_FONT, bd=0)
-            for pic in pics:
+
+            def item(pic):
                 tick = "✓  " if os.path.normcase(pic) == current else "     "
-                m.add_command(label=tick + os.path.basename(pic), command=lambda p=pic: self.set_background(p))
-            if m.index("end") is not None:
+                star = "  ★ default" if os.path.normcase(pic) == default else ""
+                m.add_command(label=tick + os.path.splitext(os.path.basename(pic))[0] + star,
+                              command=lambda p=pic: self.set_background(p))
+            if mine:                                  # this layout's own backgrounds first
+                m.add_command(label=f"{found.get('layout')}", state="disabled")
+                for pic in mine:
+                    item(pic)
                 m.add_separator()
+            others = [p for p in found["pictures"] if os.path.normcase(p) not in {os.path.normcase(x) for x in mine}]
+            if others:
+                m.add_command(label="All backgrounds" if mine else "Backgrounds", state="disabled")
+                for pic in others:
+                    item(pic)
+                m.add_separator()
+            if ADMIN and current and current != default and found.get("layout"):
+                m.add_command(label=f"Make this the default for {found['layout']}", command=lambda: self.call(
+                    lambda b: b.make_default(found["current"]),
+                    then=lambda layout: self.say(f"Default background for {layout} saved")))
             if ADMIN:
                 m.add_command(label="Add picture…", command=self.add_background)
             m.add_command(label=("✓  " if not current else "     ") + "Plain color",
@@ -571,8 +653,7 @@ class Deck:
 
     def set_background(self, path):
         name = os.path.splitext(os.path.basename(path))[0] if path else "plain color"
-        self.call(lambda b: b.set_background(path), then=lambda layout: self.say(
-            f"Background: {name}" + (f"  ·  switched to {layout}" if layout else "")))
+        self.call(lambda b: b.set_background(path), then=lambda _: self.say(f"Background: {name}"))
 
     def add_background(self):
         path = filedialog.askopenfilename(

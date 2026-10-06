@@ -68,6 +68,7 @@ class Local:
         self.checked_layouts = False           # first connection: build the layouts if OBS has none yet
         self.rebuild_waiting = False           # a guest's camera arrived mid-recording; rebuild after
         self.note = None                       # something the window should mention once
+        self.last_scene = None                 # switching to a layout puts up its default background
         self.bg_video = None                   # the live background video, read by OBS's Background Video page
         self.video_title = None                # what's in the Video + Cams box
         self.now_loaded = False                # both are kept in OBS, so they survive restarts
@@ -114,6 +115,9 @@ class Local:
             self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
             self.note = "A guest's camera was added."
         current = cl.get_current_program_scene().current_program_scene_name
+        if current != self.last_scene:         # however the layout changed (deck, hotkey, guest, OBS itself)
+            self.last_scene = current
+            self._layout_default(cl, current)
         items = []
         for i in cl.get_scene_item_list(current).scene_items:
             name = i["sourceName"]
@@ -166,7 +170,74 @@ class Local:
 
     @_locked
     def switch(self, scene):
-        self.client().set_current_program_scene(scene)
+        cl = self.client()
+        cl.set_current_program_scene(scene)
+        self.last_scene = scene
+        self._layout_default(cl, scene)
+
+    # --- Each layout's backgrounds: a default, plus extras to flip between ----------------------
+    def _layout_bgs(self, cl):
+        return positions.read(cl, positions.LAYOUT_BGS, {})
+
+    def _layout_pictures(self, cl, scene):
+        """This layout's backgrounds as full paths, default first. Pictures deleted from the folder are skipped."""
+        entry = self._layout_bgs(cl).get(scene, {})
+        names = ([entry["default"]] if entry.get("default") else []) + [
+            n for n in entry.get("extras", []) if n != entry.get("default")]
+        paths = [os.path.join(media.BACKGROUNDS, n) for n in names]
+        return [p for p in paths if os.path.exists(p)]
+
+    def _layout_default(self, cl, scene):
+        """Put up this layout's default background, if it has one."""
+        entry = self._layout_bgs(cl).get(scene, {})
+        path = os.path.join(media.BACKGROUNDS, entry["default"]) if entry.get("default") else ""
+        if not path or not os.path.exists(path):
+            return
+        try:
+            cl.set_input_settings("Background", {"file": path}, True)
+        except OBSSDKRequestError:
+            return
+        if self.bg_video:
+            self.bg_video = None
+            self._save_now(cl)
+
+    @_locked
+    def set_layout_bgs(self, layout, default=None, extras=None):
+        """Settings: a layout's default background (file name, "" for none) and its extra ones."""
+        cl = self.client()
+        found = self._layout_bgs(cl)
+        entry = found.setdefault(layout, {"default": "", "extras": []})
+        if default is not None:
+            entry["default"] = default
+        if extras is not None:
+            entry["extras"] = list(extras)
+        positions.write(cl, positions.LAYOUT_BGS, found)
+        if layout == self.last_scene and default:
+            self._layout_default(cl, layout)
+
+    def add_layout_picture(self, layout, path):
+        """Settings → Add picture…: save a picture of your own and add it to this layout (as its default if
+        it has none yet). Returns the picture's file name."""
+        try:
+            name = os.path.basename(media.add_background(path))
+        except OSError as e:
+            raise DeckError(f"Couldn't copy that picture into the backgrounds folder. ({e})") from e
+        entry = self.options()["layout_bgs"].get(layout, {"default": "", "extras": []})
+        self.set_layout_bgs(layout, default=entry.get("default") or name,
+                            extras=list(dict.fromkeys(entry.get("extras", []) + [name])))
+        return name
+
+    @_locked
+    def make_default(self, path):
+        """Background ▾ → Make this the default for the current layout."""
+        cl = self.client()
+        found = self._layout_bgs(cl)
+        entry = found.setdefault(self.last_scene, {"default": "", "extras": []})
+        old = [entry["default"]] if entry.get("default") else []   # the old default stays as an extra
+        entry["default"] = os.path.basename(path)
+        entry["extras"] = list(dict.fromkeys(entry.get("extras", []) + old + [entry["default"]]))
+        positions.write(cl, positions.LAYOUT_BGS, found)
+        return self.last_scene
 
     @_locked
     def toggle_record(self):
@@ -259,12 +330,18 @@ class Local:
 
     @_locked
     def options(self):
-        """For Settings: name tags on or off, saved backgrounds and the layout each one switches to."""
+        """For Settings: name tags on or off, every layout that shows a background, saved pictures, and
+        each layout's default and extra backgrounds."""
         cl = self.client()
-        scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes) if s["sceneName"] not in HIDDEN]
-        return {"name_tags": bool(positions.read(cl, positions.NAME_TAGS, True)), "layouts": scenes,
+        layouts = []
+        for s in reversed(cl.get_scene_list().scenes):
+            name = s["sceneName"]
+            if name not in HIDDEN and any(i["sourceName"] == "Background"
+                                          for i in cl.get_scene_item_list(name).scene_items):
+                layouts.append(name)
+        return {"name_tags": bool(positions.read(cl, positions.NAME_TAGS, True)), "layouts": layouts,
                 "pictures": [os.path.basename(p) for p in media.list_backgrounds()],
-                "bg_layouts": positions.read(cl, positions.BG_LAYOUTS, {})}
+                "layout_bgs": self._layout_bgs(cl)}
 
     @_locked
     def set_name_tags(self, on):
@@ -275,25 +352,6 @@ class Local:
             for i in cl.get_scene_item_list(s["sceneName"]).scene_items:
                 if i["sourceName"].startswith("Name - "):
                     cl.set_scene_item_enabled(s["sceneName"], i["sceneItemId"], bool(on))
-
-    @_locked
-    def set_bg_layout(self, picture, layout):
-        """Make picking this background also switch to this layout ("" for no switch)."""
-        cl = self.client()
-        found = positions.read(cl, positions.BG_LAYOUTS, {})
-        if layout:
-            found[picture] = layout
-        else:
-            found.pop(picture, None)
-        positions.write(cl, positions.BG_LAYOUTS, found)
-
-    def _layout_for(self, cl, path):
-        """Switch to the layout that goes with this background, if it has one. Returns that layout or None."""
-        layout = positions.read(cl, positions.BG_LAYOUTS, {}).get(os.path.basename(path)) if path else None
-        if layout and layout in [s["sceneName"] for s in cl.get_scene_list().scenes]:
-            cl.set_current_program_scene(layout)
-            return layout
-        return None
 
     @_locked
     def set_webcam(self, name, device):
@@ -323,9 +381,14 @@ class Local:
 
     @_locked
     def backgrounds(self):
-        """(current picture, saved pictures). Pictures are files on this PC, in the backgrounds folder."""
-        current = self.client().get_input_settings("Background").input_settings.get("file", "")
-        return current, media.list_backgrounds()
+        """For the Background menu: the current picture, this layout's backgrounds (default first), and
+        every saved picture. Pictures are files on this PC, in the backgrounds folder."""
+        cl = self.client()
+        entry = self._layout_bgs(cl).get(self.last_scene, {})
+        return {"current": cl.get_input_settings("Background").input_settings.get("file", ""),
+                "layout": self.last_scene, "mine": self._layout_pictures(cl, self.last_scene),
+                "default": os.path.join(media.BACKGROUNDS, entry["default"]) if entry.get("default") else "",
+                "pictures": media.list_backgrounds()}
 
     @_locked
     def set_background(self, path):
@@ -334,7 +397,6 @@ class Local:
         if self.bg_video:                      # a picture replaces a background video
             self.bg_video = None
             self._save_now(cl)
-        return self._layout_for(cl, path)
 
     def add_background_url(self, url):
         """Download a picture link into the backgrounds folder and show it. Not locked: downloads take a while."""
@@ -347,11 +409,21 @@ class Local:
 
     @_locked
     def next_background(self):
+        """Hotkey: the next of this layout's backgrounds, or of all saved ones if the layout has fewer than two."""
         cl = self.client()
-        nxt = media.next_background(cl.get_input_settings("Background").input_settings.get("file", ""))
+        current = cl.get_input_settings("Background").input_settings.get("file", "")
+        mine = self._layout_pictures(cl, self.last_scene)
+        if len(mine) >= 2:
+            norm = [os.path.normcase(p) for p in mine]
+            i = norm.index(os.path.normcase(current)) if os.path.normcase(current) in norm else -1
+            nxt = mine[(i + 1) % len(mine)]
+        else:
+            nxt = media.next_background(current)
         if nxt:
             cl.set_input_settings("Background", {"file": nxt}, True)
-            self._layout_for(cl, nxt)
+            if self.bg_video:
+                self.bg_video = None
+                self._save_now(cl)
         return nxt
 
     @_locked
@@ -422,8 +494,7 @@ class Remote:
         return self._do("reset", scene=scene, cam=cam)
 
     def backgrounds(self):
-        current, pics = self._do("backgrounds")
-        return current, pics
+        return self._do("backgrounds")
 
     def set_background(self, path):
         return self._do("set_background", path=path)

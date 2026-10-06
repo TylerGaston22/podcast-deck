@@ -37,7 +37,9 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] Closing and reopening the deck: cameras start on their default spots again.
   - [ ] Settings: Save camera spots as default, then reopen the deck: they start there. Reset cameras
         to default works. Show names on cams hides and shows the tags.
-  - [ ] Settings → Backgrounds: give a picture a layout; picking that picture switches to it.
+  - [ ] Settings → Backgrounds: give Just Us a default and an extra (one uploaded with Add picture…).
+        Switching to Just Us puts up the default; Background ▾ lists Just Us's first; ctrl+alt+b flips
+        between them.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
 

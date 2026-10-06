@@ -56,9 +56,10 @@ Guests' decks notice it within about two seconds, with no restart.
 
 ## Backgrounds and layouts
 
-Each saved background can have a default layout, set in Settings. Picking that background switches to
-that layout. Anything changed during a session after that (moving cams, another picture) stays for the
-session and doesn't change the defaults.
+Each layout that shows a background has a default background and optional extras, set in Settings →
+Backgrounds (Add picture… uploads your own; it's saved in the `backgrounds` folder). Switching to a layout
+puts up its default, however the switch happened. Anything changed during a session after that (another
+picture, moving cams) stays until you switch layouts or the session ends, and never changes the defaults.
 
 ## Safety
 
@@ -80,7 +81,7 @@ session and doesn't change the defaults.
 ## Where things are kept
 
 - **In the admin's OBS** (its profile's "persistent data"): default camera spots saved in Settings,
-  each layout's own spots (written by `build_scenes.py`), the name tag switch, each background's layout,
+  each layout's own spots (written by `build_scenes.py`), the name tag switch, each layout's backgrounds,
   and the full-control switch.
 - **On the admin's PC, next to the deck:** `guests.json` (the invites), `remote_cams.json` (guests'
   VDO.Ninja IDs), and `backgrounds/` (the pictures). All git-ignored.
