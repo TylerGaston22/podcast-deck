@@ -26,6 +26,7 @@ from tkinter import filedialog, messagebox, ttk
 import keyboard
 import mouse
 
+import bgcontrol
 import configfile
 import control
 import link
@@ -72,11 +73,14 @@ class Deck:
         self.selected = self.me
         self.drag, self.pending, self.sending = None, None, False
         self.hold_until = 0.0                  # keep the map as dragged until OBS has caught up
+        self.now = {}                          # what's showing: background and video titles
+        self.bg_preview, self.bg_mine = None, False   # the pasted background video, and whether it's live
+        self.bg = bgcontrol.BgControl(self, ADMIN)    # this PC only: the browser control page, and OBS's feed
 
         root.title("Deck" if ADMIN else "Deck · guest")
         root.configure(bg=BG)
         root.attributes("-topmost", True)
-        root.geometry("300x720" if ADMIN else "300x560")
+        root.geometry("300x800" if ADMIN else "300x560")
         root.minsize(220, 300)
 
         self.status = tk.Label(root, text="Connecting…", bg=BG, fg=INK_DIM, font=STATUS_FONT,
@@ -114,11 +118,28 @@ class Deck:
         # Record, Background, and Play link: always on the admin deck, on guests' only with full control.
         self.controls = tk.Frame(bottom, bg=BG)
         self.controls.pack(fill="x")
+        self.now_label = tk.Label(self.controls, text="", bg=BG, fg=INK_DIM, font=STATUS_FONT, anchor="w")
+        self.now_label.pack(fill="x", padx=12, pady=(10, 0))
+        # A pasted background video waits here until someone switches to it.
+        self.pending_row = tk.Frame(self.controls, bg=BG)
+        tk.Label(self.pending_row, text="Video ready in your browser", bg=BG, fg=LIT,
+                 font=STATUS_FONT, anchor="w").pack(side="left")
+        self.small_key(self.pending_row, "✕", self.hide_pending).pack(side="right")
+        switch = self.small_key(self.pending_row, "Switch", self.switch_background)
+        switch.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
+        switch.pack(side="right", padx=4)
         extras = tk.Frame(self.controls, bg=BG)
-        extras.pack(fill="x", padx=12, pady=(12, 0))
-        self.bg_button = self.key(extras, "Background ▾", self.background_menu)
-        self.bg_button.pack(side="left", fill="x", expand=True, padx=(0, 3), ipady=6)
-        self.key(extras, "Play link…", self.play_link).pack(side="left", fill="x", expand=True, padx=(3, 0), ipady=6)
+        extras.pack(fill="x", padx=12, pady=(6, 0))
+        self.extras = extras
+        # Small, side by side: the background menu, its Paste link box, and the Video + Cams link box.
+        for col, (text, cmd) in enumerate((("Background ▾", self.background_menu), ("Paste link", self.bg_link_box),
+                                          ("Play link…", self.play_link))):
+            b = self.small_key(extras, text, cmd)
+            b.config(padx=6, anchor="center")
+            b.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 3, 0), ipady=6)
+            extras.columnconfigure(col, weight=1)
+            if col == 0:
+                self.bg_button = b
         self.rec = self.key(self.controls, "Record", self.toggle_record)
         self.rec.pack(fill="x", padx=12, pady=12, ipady=8)
         tk.Frame(bottom, bg=BG, height=12).pack()
@@ -386,12 +407,17 @@ class Deck:
         c, s = self.map, self.scale()
         c.delete("all")
         c.create_rectangle(0, 0, self.canvas[0] * s - 1, self.canvas[1] * s - 1, fill=KEY, outline=KEY_HOVER)
+        if self.now.get("background") and any(i["name"] == "Video Panel" or i["name"].startswith("Cam - ")
+                                              for i in self.items):
+            c.create_text(6, 4, text="Background: " + self.now["background"], anchor="nw", fill=INK_DIM,
+                          font=STATUS_FONT, width=self.canvas[0] * s - 12)
         for item in self.items:
             x, y, w, h = (v * s for v in item["box"])
             name = item["name"]
             if name == "Video Panel":
                 c.create_rectangle(x, y, x + w, y + h, outline=INK_DIM, dash=(3, 3))
-                c.create_text(x + w / 2, y + h / 2, text="Video", fill=INK_DIM, font=STATUS_FONT)
+                c.create_text(x + w / 2, y + h / 2, text="▶ " + (self.now.get("video") or "Video"), width=max(w - 8, 10),
+                              fill=INK_DIM, font=STATUS_FONT)
                 continue
             mine = name == self.selected
             c.create_rectangle(x, y, x + w, y + h, fill=LIT if mine else KEY_HOVER,
@@ -528,13 +554,143 @@ class Deck:
             f"Background: {os.path.splitext(os.path.basename(nxt))[0]}" if nxt
             else "No saved backgrounds yet. Use Background ▾ → Add picture… on the admin's deck first."))
 
+    # --- Pasted background (picture or video) --------------------------------
+    def bg_link_box(self):
+        """Paste a picture or video for the background. Pictures switch right away; videos open a control
+        page in the browser, and the background only switches when someone clicks Use as background
+        there (or Switch on the deck)."""
+        win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
+        win.title("Background")
+        win.attributes("-topmost", True)
+        win.transient(self.root)
+        win.resizable(False, False)
+        tk.Label(win, text="Paste a picture or video for the background", bg=BG, fg=INK, font=FONT,
+                 anchor="w").pack(fill="x")
+        tk.Label(win, text="A picture file or link, a YouTube link, or a video link (.mp4).", bg=BG, fg=INK_DIM,
+                 font=STATUS_FONT, anchor="w").pack(fill="x")
+        entry = tk.Entry(win, width=48, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+        entry.pack(fill="x", pady=(8, 4), ipady=6)
+        note = tk.Label(win, text="", bg=BG, fg=INK_DIM, font=STATUS_FONT, anchor="w", justify="left",
+                        wraplength=380)
+        note.pack(fill="x")
+        try:
+            clip = self.root.clipboard_get()
+            if media.parse_background(clip):
+                entry.insert(0, clip.strip())
+        except tk.TclError:
+            pass
+
+        def use(_e=None):
+            found = media.parse_background(entry.get())
+            if not found:
+                note.config(text="That isn't a picture or video link. Copy the whole link and try again.", fg=REC)
+                return
+            kind = found["kind"]
+            if kind == "picture_file":
+                if not ADMIN:
+                    note.config(text="Pictures from your PC can only be added on the admin's deck. "
+                                     "Paste a picture link instead.", fg=REC)
+                    return
+                try:
+                    self.set_background(media.add_background(found["path"]))
+                except OSError as e:
+                    note.config(text=f"Couldn't copy that picture. ({e})", fg=REC)
+                    return
+                win.destroy()
+            elif kind == "picture_url":
+                note.config(text="Getting the picture…", fg=INK_DIM)
+                self.call(lambda b: b.add_background_url(found["url"]),
+                          then=lambda name: self.say(f"Background: {name}"))
+                win.destroy()
+            elif kind == "youtube":
+                note.config(text="Checking the video…", fg=INK_DIM)
+                def check():
+                    problem, title = media.youtube_check(found["id"])
+                    def done():
+                        if not win.winfo_exists():
+                            return
+                        if problem:
+                            note.config(text=problem, fg=REC)
+                        else:
+                            self.open_bg_preview(dict(found, title=title or "YouTube video"))
+                            win.destroy()
+                    self.root.after(0, done)
+                threading.Thread(target=check, daemon=True).start()
+            else:
+                name = os.path.basename(found["url"].split("?")[0])
+                self.open_bg_preview(dict(found, title=name))
+                win.destroy()
+
+        row = tk.Frame(win, bg=BG)
+        row.pack(fill="x", pady=(12, 0))
+        go = self.key(row, "Use", use)
+        go.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
+        go.pack(side="left", ipady=4)
+        self.key(row, "Cancel", win.destroy).pack(side="right", ipady=4)
+        win.bind("<Return>", use)
+        win.bind("<Escape>", lambda _e: win.destroy())
+        entry.focus_set()
+        entry.select_range(0, "end")
+
+    def open_bg_preview(self, source):
+        """Open the browser control page for a pasted background video."""
+        if not self.bg.httpd:
+            self.tell("The deck couldn't start its background video page. Close other decks on this PC and "
+                      "reopen this one.")
+            return
+        self.bg.pending, self.bg_preview, self.bg_mine = source, None, False
+        webbrowser.open(self.bg.page_url())
+        self.pending_row.pack(fill="x", padx=12, pady=(6, 0), before=self.extras)
+        self.say("Control the video in your browser. It switches when you click Use as background or Switch.", 10)
+
+    def hide_pending(self):
+        self.pending_row.pack_forget()
+
+    def switch_background(self):
+        """The deck's Switch button: put the previewed video in the background, from where the preview is."""
+        src = self.bg.pending
+        if not src:
+            return
+        state = self.bg_preview or {"kind": src["kind"], "id": src.get("id"), "url": src.get("url"),
+                                    "title": src.get("title", ""), "time": src.get("start", 0)}
+        state = dict(state, seek=(state.get("seek") or 0) + 1)
+        self.call(lambda b: b.set_bg_video(state), then=lambda _: self.went_live())
+
+    def went_live(self):
+        self.bg_mine = True
+        self.hide_pending()
+        self.say("Background video is live. Your browser tab controls it.", 8)
+
+    # Called by the local server (bgcontrol.py), from its own thread.
+    def live_state(self):
+        return self.backend.live_bg() if ADMIN and isinstance(self.backend, control.Local) else None
+
+    def control(self, state, action):
+        if action == "preview":
+            self.bg_preview = state
+            return ""
+        if self.backend is None:
+            raise DeckError("The deck isn't connected yet.")
+        if action == "go_live":
+            self.backend.set_bg_video(state)
+            self.root.after(0, self.went_live)
+            return "Live"
+        if action == "update":
+            if self.bg_mine:
+                self.backend.set_bg_video(state)
+            return ""
+        self.backend.set_bg_video(None)                     # stop
+        self.bg_mine = False
+        self.root.after(0, self.say, "Background video stopped")
+        return "Stopped"
+
     # --- Video link --------------------------------------------------------
     def play_link(self):
         self.call(lambda b: b.video_settings(), then=self.link_box)
 
-    def play_video(self, vid=None, start=0):
+    def play_video(self, vid=None, start=0, title=None):
         """Play a video in the Video + Cams box, or stop it when vid is None."""
-        self.call(lambda b: b.play_video(vid, start),
+        self.call(lambda b: b.play_video(vid, start, title),
                   then=lambda _: self.say("Playing in Video + Cams" if vid else "Video stopped"))
 
     def link_box(self, settings):
@@ -568,8 +724,8 @@ class Deck:
         except tk.TclError:
             pass
 
-        def load(vid=None, start=0):
-            self.play_video(vid, start)
+        def load(vid=None, start=0, title=None):
+            self.play_video(vid, start, title)
             win.destroy()
 
         def play(_event=None):
@@ -579,14 +735,14 @@ class Deck:
                 return
             note.config(text="Checking the video…", fg=INK_DIM)
             def check():
-                problem = media.embed_problem(found[0])
+                problem, title = media.youtube_check(found[0])
                 def done():
                     if not win.winfo_exists():
                         return
                     if problem:
                         note.config(text=problem, fg=REC)
                     else:
-                        load(*found)
+                        load(*found, title)
                 self.root.after(0, done)
             threading.Thread(target=check, daemon=True).start()
 
@@ -637,6 +793,14 @@ class Deck:
                 self.selected = self.me
         if state.get("note"):
             self.say(state["note"], seconds=10)
+        now = state.get("now") or {}
+        if now != self.now:
+            self.now = now
+            short = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
+            text = "Now: " + short(now.get("background") or "plain color", 22)
+            if now.get("video"):
+                text += "  ·  ▶ " + short(now["video"], 20)
+            self.now_label.config(text=text)
         self.canvas = tuple(state["canvas"])
         full = state["full"]
         self.full = full
@@ -667,7 +831,7 @@ class Deck:
         """Guest deck: show or hide the admin's controls when full control is turned on or off."""
         if full:
             self.controls.pack(fill="x", after=self.reset_button.master)
-            self.root.geometry(f"{self.root.winfo_width()}x700")
+            self.root.geometry(f"{self.root.winfo_width()}x800")
             self.reset_button.config(text="Reset camera")
             if self.built_full is not None:
                 self.say("The admin gave you full control")

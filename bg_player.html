@@ -1,0 +1,38 @@
+<!doctype html>
+<!-- The page OBS's "Background Video" source shows, above the background picture. It's a local file,
+     so it always loads, even before the deck is open. When the admin's deck says there's a background
+     video, it shows the deck's player page (bg_frame.html, from localhost, where YouTube will play).
+     Otherwise it's transparent, so the picture underneath shows. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+</style>
+</head>
+<body>
+<script>
+  let frame = null;
+  async function poll() {
+    try {
+      const r = await fetch("http://127.0.0.1:4461/bg/state", { cache: "no-store" });
+      const s = await r.json();
+      if (s && !frame) {
+        frame = document.createElement("iframe");
+        frame.allow = "autoplay; encrypted-media";
+        frame.src = "http://localhost:4461/bg/frame";
+        document.body.appendChild(frame);
+      } else if (!s && frame) {
+        frame.remove();
+        frame = null;
+      }
+    } catch (e) {
+      // The deck is closed: leave things as they are.
+    }
+  }
+  poll();
+  setInterval(poll, 1000);
+</script>
+</body>
+</html>

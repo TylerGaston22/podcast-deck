@@ -24,6 +24,11 @@ Nothing has been run against real OBS yet. Do this before building anything new.
         Back, and is still there after restarting OBS.
   - [ ] `ctrl+alt+b` steps through saved pictures, including while a game has focus.
   - [ ] Play link…: a pasted YouTube link plays in the Video + Cams box, with sound in the recording.
+  - [ ] Paste link with a picture link: it downloads and becomes the background.
+  - [ ] Paste link with a YouTube link: the browser page opens, nothing changes in OBS until Use as
+        background (or Switch), then it plays in the background. Pause, mute, volume, and seek on the
+        page change it in OBS, with sound in the recording. Stop takes it away.
+  - [ ] "Now:" line and the screen map show the right background and video titles.
   - [ ] A link to a video that blocks embedding shows the "can't be played here" message.
   - [ ] Restart option off: leaving and returning to Video + Cams picks up mid-video. On: it starts over.
   - [ ] Video + Cams: cams sit beside the video box without covering it.

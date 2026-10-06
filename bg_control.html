@@ -1,0 +1,177 @@
+<!doctype html>
+<!-- The background video control page. The deck opens it in your browser after you paste a video
+     link. Nothing changes in OBS until "Use as background"; after that, these controls change the
+     background video live. Served by the deck on this PC only (bgcontrol.py). -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Background video</title>
+<style>
+  :root { --bg: #0c0f14; --panel: #151a21; --raised: #1b212a; --hover: #212833; --text: #e6ebf1;
+          --dim: #a4afbe; --accent: #7cc4ff; --accent-ink: #06121e; --live: #ff3d4f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 20px 16px 32px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin: 0 0 14px; }
+  .screen { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden; }
+  .screen > #player, .screen > video, .screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  button { font: inherit; color: var(--text); background: var(--raised); border: 0; border-radius: 6px;
+           padding: 7px 12px; cursor: pointer; }
+  button:hover { background: var(--hover); }
+  button.use { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  input[type=range] { accent-color: var(--accent); }
+  #seek { flex: 1; min-width: 160px; }
+  #vol { width: 90px; }
+  .time { color: var(--dim); font-variant-numeric: tabular-nums; min-width: 92px; text-align: right; }
+  .status { margin-top: 12px; color: var(--dim); min-height: 1.4em; }
+  .status.live { color: var(--accent); }
+  .status.error { color: var(--live); }
+  .spacer { flex: 1; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Background video</h1>
+  <p class="sub" id="sub">Preview it here. Nothing changes in the show until you click <b>Use as background</b>.</p>
+  <div class="screen"><div id="player"></div></div>
+  <div class="bar">
+    <button id="play" title="Play / pause">⏸</button>
+    <button id="mute" title="Mute / unmute">🔊</button>
+    <input id="vol" type="range" min="0" max="100" value="100" title="Volume">
+    <input id="seek" type="range" min="0" max="100" value="0" step="0.1" title="Seek">
+    <span class="time" id="time">0:00 / 0:00</span>
+  </div>
+  <div class="bar">
+    <span class="spacer"></span>
+    <button id="stop" hidden>Stop background video</button>
+    <button id="use" class="use">Use as background</button>
+  </div>
+  <div class="status" id="status"></div>
+</main>
+<script>
+  const SETUP = /*SETUP*/null;
+  const src = SETUP.source;
+  const $ = (id) => document.getElementById(id);
+  // The background's state. The preview follows it; once live, so does OBS.
+  const state = { kind: src.kind, id: src.id || null, url: src.url || null, title: src.title || "",
+                  playing: true, muted: false, volume: 100, time: src.start || 0, seek: 0 };
+  let live = false, player = null, video = null;
+
+  if (state.title) $("title").textContent = state.title;
+
+  function status(text, cls) { $("status").textContent = text; $("status").className = "status " + (cls || ""); }
+
+  async function send(action) {
+    try {
+      const r = await fetch("/bg/control", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: SETUP.token, action, state: action === "stop" ? null : state }) });
+      const body = await r.json();
+      if (!r.ok) { status(body.message || "That didn't work.", "error"); return false; }
+      return true;
+    } catch (e) {
+      status("Can't reach the deck. Is it still open?", "error");
+      return false;
+    }
+  }
+
+  // --- The preview player (YouTube or a direct video link) ---------------------------------
+  const ctl = {
+    play() { player ? player.playVideo() : video.play(); },
+    pause() { player ? player.pauseVideo() : video.pause(); },
+    setMuted(m) { if (player) { m ? player.mute() : player.unMute(); } else { video.muted = m; } },
+    setVolume(v) { player ? player.setVolume(v) : (video.volume = v / 100); },
+    seek(t) { player ? player.seekTo(t, true) : (video.currentTime = t); },
+    time() { return player ? (player.getCurrentTime() || 0) : (video.currentTime || 0); },
+    duration() { return player ? (player.getDuration() || 0) : (video.duration || 0); },
+  };
+
+  // Once live, OBS plays the sound; the preview stays silent so you don't hear it twice.
+  function applyLocalSound() { ctl.setMuted(live || state.muted); ctl.setVolume(state.volume); }
+
+  if (state.kind === "youtube") {
+    window.onYouTubeIframeAPIReady = () => {
+      player = new YT.Player("player", {
+        videoId: state.id,
+        playerVars: { autoplay: 1, controls: 0, start: Math.floor(state.time), rel: 0, playsinline: 1,
+                      loop: 1, playlist: state.id },
+        events: {
+          onReady: () => { applyLocalSound(); ctl.play(); },
+          onError: () => status("This video can't be played outside YouTube. Try another link.", "error"),
+        },
+      });
+    };
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(s);
+  } else {
+    video = document.createElement("video");
+    video.src = state.url; video.autoplay = true; video.loop = true; video.playsInline = true;
+    video.currentTime = state.time;
+    video.onerror = () => status("That video link didn't load. Try another one.", "error");
+    $("player").replaceWith(video);
+    applyLocalSound();
+  }
+
+  // --- Controls ------------------------------------------------------------------------------
+  function changed() { if (live) send("update"); }
+
+  $("play").onclick = () => {
+    state.playing = !state.playing;
+    state.time = ctl.time();
+    state.playing ? ctl.play() : ctl.pause();
+    changed();
+  };
+  $("mute").onclick = () => { state.muted = !state.muted; applyLocalSound(); changed(); };
+  $("vol").oninput = () => { state.volume = +$("vol").value; applyLocalSound(); };
+  $("vol").onchange = changed;
+  let seeking = false;
+  $("seek").oninput = () => { seeking = true; };
+  $("seek").onchange = () => {
+    seeking = false;
+    state.time = ctl.duration() * $("seek").value / 100;
+    state.seek += 1;
+    ctl.seek(state.time);
+    changed();
+  };
+
+  $("use").onclick = async () => {
+    state.time = ctl.time();
+    state.seek += 1;                           // OBS starts at the same moment as the preview
+    $("use").disabled = true;
+    if (await send("go_live")) {
+      live = true;
+      applyLocalSound();
+      $("use").hidden = true; $("stop").hidden = false;
+      $("sub").textContent = "These controls change the background video in the show.";
+      status("Live in the background.", "live");
+    }
+    $("use").disabled = false;
+  };
+  $("stop").onclick = async () => {
+    if (await send("stop")) {
+      live = false;
+      applyLocalSound();
+      $("stop").hidden = true; $("use").hidden = false;
+      $("sub").textContent = "Stopped. Click Use as background to put it back.";
+      status("");
+    }
+  };
+
+  // Keep the buttons and the time bar up to date.
+  const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+  setInterval(() => {
+    if (!player && !video) return;
+    const t = ctl.time(), d = ctl.duration();
+    $("time").textContent = `${fmt(t)} / ${fmt(d)}`;
+    if (!seeking && d) $("seek").value = (t / d) * 100;
+    $("play").textContent = state.playing ? "⏸" : "▶";
+    $("mute").textContent = state.muted ? "🔇" : "🔊";
+    if (!live) { state.time = t; send("preview"); }   // the deck's Switch button starts from here
+  }, 1000);
+</script>
+</body>
+</html>

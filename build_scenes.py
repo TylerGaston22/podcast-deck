@@ -41,6 +41,10 @@ BASE_SOURCES = {
     "Backdrop":      ("color_source",    {"color": 0xFF1B1F2A, "width": W, "height": H}),
     # Picked from the deck's Background menu. Empty until then, so Backdrop shows through.
     "Background":    ("image_source",    {"file": ""}),
+    # A video background: bg_player.html follows the browser control page (deck's Paste link). Transparent
+    # when there's no background video, so the picture underneath shows.
+    "Background Video": ("browser_source", {"is_local_file": True, "local_file": os.path.join(HERE, "bg_player.html"),
+                                            "width": W, "height": H, "reroute_audio": True, "shutdown": False}),
     # player.html plays whatever YouTube link the deck's "Play link…" box was given.
     # reroute_audio = "Control audio via OBS", so the video's sound is recorded.
     "Video Panel":   ("browser_source",  {"is_local_file": True, "local_file": os.path.join(HERE, "player.html"),
@@ -113,8 +117,8 @@ def cams_column(box):
     return [(f"Cam - {name}", col_x, y0 + i * (ch + m), cw, ch) for i, name in enumerate(cfg.CAMS)]
 
 def backdrop():
-    """The plain color with the chosen background picture over it."""
-    return [full("Backdrop"), full("Background")]
+    """The plain color, the chosen background picture over it, and a background video over that."""
+    return [full("Backdrop"), full("Background"), full("Background Video")]
 
 def with_discord(items):
     return items + ([full("Discord Voice")] if cfg.DISCORD_STREAMKIT_URL else [])
@@ -177,9 +181,9 @@ def build(cl, log=print, keep_scene=None):
         if f"Cam - {name}" in SOURCES:
             cl.set_input_settings(f"Cam - {name}", {"url": url}, True)
     assign_webcams(cl, [n for n, (kind, _) in SOURCES.items() if n.startswith("Cam - ") and kind == "dshow_input"], log)
-    # Keep the video page sized to the box and pointed at this folder's player.html.
-    cl.set_input_settings("Video Panel", {k: SOURCES["Video Panel"][1][k]
-                                          for k in ("local_file", "width", "height")}, True)
+    # Keep the video pages sized right and pointed at this folder's player pages.
+    for page in ("Video Panel", "Background Video"):
+        cl.set_input_settings(page, {k: SOURCES[page][1][k] for k in ("local_file", "width", "height")}, True)
 
     # 2. Layout scenes, rebuilt from scratch.
     item_ids = {}

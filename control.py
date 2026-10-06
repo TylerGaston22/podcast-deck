@@ -15,6 +15,7 @@ import urllib.request
 import obsws_python as obs
 from obsws_python.error import OBSSDKRequestError
 
+import bgcontrol
 import link
 import media
 import obsconfig
@@ -23,6 +24,7 @@ import positions
 HIDDEN = {"_Sources (don't delete)"}
 NOT_BUILT = "OBS doesn't have the new sources yet. Click Settings → Rebuild layouts to add them."
 OBS_CLOSED = "OBS not reachable. Open OBS; this window connects by itself."
+NOW_SLOT = "podcast_deck.now"                  # {"bg": live background video, "video": Video + Cams title}
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
@@ -66,6 +68,9 @@ class Local:
         self.checked_layouts = False           # first connection: build the layouts if OBS has none yet
         self.rebuild_waiting = False           # a guest's camera arrived mid-recording; rebuild after
         self.note = None                       # something the window should mention once
+        self.bg_video = None                   # the live background video, read by OBS's Background Video page
+        self.video_title = None                # what's in the Video + Cams box
+        self.now_loaded = False                # both are kept in OBS, so they survive restarts
 
     def client(self):
         """Connect with OBS's own password, read from OBS's settings, so nobody has to copy it."""
@@ -116,7 +121,35 @@ class Local:
         note, self.note = self.note, None
         return {"scenes": [s for s in scenes if s not in HIDDEN], "current": current,
                 "recording": recording, "full": self._full(cl), "items": items, "canvas": list(self.canvas),
-                "note": note}
+                "note": note, "now": self._now(cl)}
+
+    def _now(self, cl):
+        """What's showing: the background (video title or picture name) and the Video + Cams video."""
+        if not self.now_loaded:
+            self.now_loaded = True
+            saved = positions.read(cl, NOW_SLOT, {})
+            self.bg_video, self.video_title = saved.get("bg"), saved.get("video")
+        if self.bg_video:
+            background = "▶ " + (self.bg_video.get("title") or "video")
+        else:
+            try:
+                path = cl.get_input_settings("Background").input_settings.get("file", "")
+            except OBSSDKRequestError:
+                path = ""
+            background = os.path.splitext(os.path.basename(path))[0] if path else "plain color"
+        return {"background": background, "video": self.video_title}
+
+    def _save_now(self, cl):
+        positions.write(cl, NOW_SLOT, {"bg": self.bg_video, "video": self.video_title})
+
+    @_locked
+    def set_bg_video(self, state):
+        """Put a video in the background (or take it away with None). OBS's page picks it up in a moment."""
+        self.bg_video = bgcontrol.valid_state(state)
+        self._save_now(self.client())
+
+    def live_bg(self):
+        return self.bg_video
 
     def _full(self, cl):
         return bool(positions.read(cl, positions.GUESTS_FULL_CONTROL, False))
@@ -220,7 +253,20 @@ class Local:
 
     @_locked
     def set_background(self, path):
-        self.client().set_input_settings("Background", {"file": path}, True)
+        cl = self.client()
+        cl.set_input_settings("Background", {"file": path}, True)
+        if self.bg_video:                      # a picture replaces a background video
+            self.bg_video = None
+            self._save_now(cl)
+
+    def add_background_url(self, url):
+        """Download a picture link into the backgrounds folder and show it. Not locked: downloads take a while."""
+        try:
+            path = media.download_picture(url)
+        except (ValueError, OSError) as e:
+            raise DeckError(f"Couldn't get that picture. ({e})") from e
+        self.set_background(path)
+        return os.path.splitext(os.path.basename(path))[0]
 
     @_locked
     def next_background(self):
@@ -239,9 +285,11 @@ class Local:
         self.client().set_input_settings("Video Panel", {"shutdown": bool(on)}, True)
 
     @_locked
-    def play_video(self, vid=None, start=0):
+    def play_video(self, vid=None, start=0, title=None):
         """Point player.html at a video (or at nothing) and reload the Video Panel."""
         cl = self.client()
+        self.video_title = (title or "YouTube video")[:200] if vid else None
+        self._save_now(cl)
         folder = cl.get_input_settings("Video Panel").input_settings.get("local_file") or ""
         try:
             media.write_now_playing(os.path.dirname(folder) or media.APP_DIR, vid, start)
@@ -311,8 +359,14 @@ class Remote:
     def set_restart(self, on):
         self._do("set_restart", on=on)
 
-    def play_video(self, vid=None, start=0):
-        self._do("play_video", vid=vid, start=start)
+    def play_video(self, vid=None, start=0, title=None):
+        self._do("play_video", vid=vid, start=start, title=title)
+
+    def set_bg_video(self, state):
+        self._do("bg_video", state=state)
+
+    def add_background_url(self, url):
+        return self._do("background_url", url=url)
 
     def camera(self, cam_id):
         return self._do("camera", id=cam_id)

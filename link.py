@@ -272,10 +272,22 @@ class LinkServer:
         if action == "set_restart":
             return local.set_restart(bool(args.get("on")))
         if action == "play_video":
-            vid, start = args.get("vid"), args.get("start", 0)
+            vid, start, title = args.get("vid"), args.get("start", 0), args.get("title")
             if vid is not None and not (isinstance(vid, str) and _YOUTUBE_ID.fullmatch(vid)):
                 raise DeckError("That isn't a YouTube video.")
             if not isinstance(start, int) or start < 0:
                 start = 0
-            return local.play_video(vid, start)
+            return local.play_video(vid, start, title[:200] if isinstance(title, str) else None)
+        if action == "bg_video":
+            import bgcontrol
+            try:
+                state = bgcontrol.valid_state(args.get("state"))
+            except ValueError:
+                raise DeckError("That background video doesn't look right.") from None
+            return local.set_bg_video(state)
+        if action == "background_url":
+            url = args.get("url")
+            if not isinstance(url, str) or (media.parse_background(url) or {}).get("kind") != "picture_url":
+                raise DeckError("That isn't a picture link.")
+            return local.add_background_url(url)
         raise DeckError("Unknown request.")

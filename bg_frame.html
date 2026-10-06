@@ -1,0 +1,99 @@
+<!doctype html>
+<!-- The background video player. Served by the admin's deck at http://localhost:4461/bg/frame and shown
+     inside bg_player.html (OBS's "Background Video" source). It asks the deck what to play and follows
+     play, pause, mute, volume, and seeks from the browser control page. Served from localhost because
+     YouTube refuses to play for pages opened as files or by IP address. -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  #wrap { position: absolute; inset: 0; }
+  #wrap > div, #wrap iframe, #wrap video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
+                                            object-fit: cover; }
+</style>
+</head>
+<body>
+<div id="wrap"></div>
+<script>
+  const STATE = "/bg/state";
+  let shown = null;      // what's loaded: "youtube:<id>" or "video:<url>"
+  let player = null, video = null, ready = false, lastSeek = null;
+
+  function clear() {
+    document.getElementById("wrap").innerHTML = "";
+    player = video = null; ready = false; shown = null; lastSeek = null;
+  }
+
+  function load(s) {
+    clear();
+    shown = s.kind === "youtube" ? "youtube:" + s.id : "video:" + s.url;
+    lastSeek = s.seek;
+    const wrap = document.getElementById("wrap");
+    if (s.kind === "youtube") {
+      const div = document.createElement("div");
+      div.id = "yt";
+      wrap.appendChild(div);
+      const make = () => {
+        player = new YT.Player("yt", {
+          videoId: s.id,
+          playerVars: { autoplay: 1, controls: 0, start: Math.floor(s.time), rel: 0, playsinline: 1,
+                        loop: 1, playlist: s.id, disablekb: 1, iv_load_policy: 3 },
+          events: { onReady: () => { ready = true; apply(s, true); } },
+        });
+      };
+      if (window.YT && YT.Player) make();
+      else {
+        window.onYouTubeIframeAPIReady = make;
+        const tag = document.createElement("script");
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(tag);
+      }
+    } else {
+      video = document.createElement("video");
+      video.src = s.url; video.loop = true; video.playsInline = true;
+      video.currentTime = s.time;
+      wrap.appendChild(video);
+      ready = true;
+      apply(s, true);
+    }
+  }
+
+  function apply(s, first) {
+    if (!ready) return;
+    if (player) {
+      s.muted ? player.mute() : player.unMute();
+      player.setVolume(s.volume);
+      if (!first && s.seek !== lastSeek) player.seekTo(s.time, true);
+      const playing = player.getPlayerState() === 1;
+      if (s.playing && !playing) player.playVideo();
+      if (!s.playing && playing) player.pauseVideo();
+    } else if (video) {
+      video.muted = s.muted;
+      video.volume = s.volume / 100;
+      if (!first && s.seek !== lastSeek) video.currentTime = s.time;
+      if (s.playing && video.paused) video.play();
+      if (!s.playing && !video.paused) video.pause();
+    }
+    lastSeek = s.seek;
+  }
+
+  async function poll() {
+    try {
+      const r = await fetch(STATE, { cache: "no-store" });
+      const s = await r.json();
+      if (!s) { if (shown) clear(); }
+      else {
+        const key = s.kind === "youtube" ? "youtube:" + s.id : "video:" + s.url;
+        if (key !== shown) load(s); else apply(s, false);
+      }
+    } catch (e) {
+      // The deck is closed: keep whatever is playing.
+    }
+  }
+  poll();
+  setInterval(poll, 500);
+</script>
+</body>
+</html>

@@ -11,6 +11,8 @@ import urllib.request
 APP_DIR = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
 BACKGROUNDS = os.path.join(APP_DIR, "backgrounds")
 IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+VIDEO_TYPES = (".mp4", ".webm", ".mov", ".m4v")
+MAX_PICTURE = 25 * 1024 * 1024
 
 
 # --- Backgrounds -------------------------------------------------------------
@@ -101,24 +103,71 @@ def _seconds(t):
     return h * 3600 + mi * 60 + s
 
 
-def embed_problem(vid):
-    """Ask YouTube whether the video can play outside youtube.com.
+def youtube_check(vid):
+    """Ask YouTube whether the video can play outside youtube.com, and get its title.
 
-    Returns a message to show if it can't, or None if it can (or YouTube couldn't be reached,
-    in which case the player page shows its own message if the video fails).
+    Returns (problem, title). problem is a message to show if it can't play, or None if it can (or
+    YouTube couldn't be reached, in which case the player page shows its own message if it fails).
     """
     url = ("https://www.youtube.com/oembed?format=json&url="
            + urllib.parse.quote(f"https://www.youtube.com/watch?v={vid}", safe=""))
     try:
-        urllib.request.urlopen(url, timeout=5).close()
+        with urllib.request.urlopen(url, timeout=5) as r:
+            title = json.loads(r.read()).get("title")
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
-            return ("This video's owner only allows it to play on YouTube, so it can't go in the video "
-                    "box. Open it in a browser and use Browser + Cams instead.")
-        return "YouTube can't find that video. It may be private or deleted."
-    except (urllib.error.URLError, OSError):
-        return None
+            return ("This video's owner only allows it to play on YouTube, so it can't be played here. "
+                    "Open it in a browser and use Browser + Cams instead."), None
+        return "YouTube can't find that video. It may be private or deleted.", None
+    except (urllib.error.URLError, OSError, ValueError):
+        return None, None
+    return None, title if isinstance(title, str) else None
+
+
+# --- Pasted background links ---------------------------------------------------
+def parse_background(text):
+    """What a pasted background is: a picture file on this PC, a picture link, a YouTube link, or a
+    direct video link. Returns a dict with "kind", or None if it's none of those."""
+    text = text.strip().strip('"')
+    if text.lower().endswith(IMAGE_TYPES) and os.path.isfile(text):
+        return {"kind": "picture_file", "path": text}
+    found = parse_youtube(text)
+    if found:
+        return {"kind": "youtube", "id": found[0], "start": found[1]}
+    u = urllib.parse.urlparse(text)
+    if u.scheme == "https" and u.hostname:
+        path = u.path.lower()
+        if path.endswith(IMAGE_TYPES):
+            return {"kind": "picture_url", "url": text}
+        if path.endswith(VIDEO_TYPES):
+            return {"kind": "video_url", "url": text}
     return None
+
+
+def download_picture(url):
+    """Save a picture from a link into the backgrounds folder, and return its path.
+
+    https only, pictures only, and at most 25 MB, so a pasted link can't fetch anything else.
+    """
+    u = urllib.parse.urlparse(url)
+    if u.scheme != "https" or not u.path.lower().endswith(IMAGE_TYPES):
+        raise ValueError("That isn't a picture link.")
+    req = urllib.request.Request(url, headers={"User-Agent": "podcast-deck"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        if not (r.headers.get("Content-Type") or "").startswith("image/"):
+            raise ValueError("That link isn't a picture.")
+        data = r.read(MAX_PICTURE + 1)
+    if len(data) > MAX_PICTURE:
+        raise ValueError("That picture is too big (over 25 MB).")
+    name = re.sub(r"[^A-Za-z0-9 ._-]", "_", os.path.basename(urllib.parse.unquote(u.path)))[-80:] or "picture.png"
+    os.makedirs(BACKGROUNDS, exist_ok=True)
+    stem, ext = os.path.splitext(name)
+    dest, n = os.path.join(BACKGROUNDS, name), 2
+    while os.path.exists(dest):
+        dest, n = os.path.join(BACKGROUNDS, f"{stem} ({n}){ext}"), n + 1
+    with open(dest, "wb") as f:
+        f.write(data)
+    return dest
 
 
 def write_now_playing(folder, vid=None, start=0):

@@ -37,6 +37,7 @@ How the deck works when hosts join from different places. Setup steps are in the
 | Record | Yes | No | Yes |
 | Background ▾ and `ctrl+alt+b` | Yes | No | Yes, from the admin's saved pictures |
 | Play link… | Yes | No | Yes |
+| Paste link (background picture or video) | Yes | No | Yes, links only (no files from their PC) |
 | Add new background pictures | Yes | No | No |
 | Invite guests, turn full control on or off | Yes | No | No |
 
@@ -62,6 +63,11 @@ Guests' decks notice it within about two seconds, with no restart.
 - **Tailscale encrypts everything** between the PCs.
 - **The OBS password never leaves the admin's PC**, and the deck only ever controls the OBS on its own PC.
 - **VDO.Ninja IDs work like keys** to watch a camera, so keep them long and private.
+- **The background video page is on this PC only.** The deck serves it at `localhost:4461`, never on the
+  network. Changing anything needs a secret token that only the deck and the page it opened know, so no
+  website can change your background.
+- **Pasted links are checked.** Pictures and videos must be `https`, pictures must really be pictures and
+  at most 25 MB, and YouTube links must be real video IDs.
 
 ## Where things are kept
 

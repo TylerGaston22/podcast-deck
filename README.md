@@ -205,6 +205,7 @@ All three work at the same time, and all of them work while a game has focus.
 | Start / stop recording | Click Record | `ctrl+alt+r` | Forward button |
 | Next background picture | — | `ctrl+alt+b` | — (can be set to `"next background"`) |
 | Pick or add a background | Background ▾ | — | — |
+| Paste a picture or video for the background | Paste link | — | — |
 | Play a YouTube link | Play link… | — | — |
 
 Hotkey numbers follow the order of the scenes in OBS, and each button in the deck window shows its
@@ -215,6 +216,17 @@ picture…** opens a file picker and copies the picture into the `backgrounds` f
 working if the original moves and stays in the menu from then on. **Plain color** turns the picture
 off, and **Open backgrounds folder** lets you add or delete pictures by hand. OBS remembers the
 current picture between sessions.
+
+**Paste link** opens a small box for the background. Paste a picture file path, a picture link
+(`https://….png` or `.jpg`), a YouTube link, or a direct video link (`https://….mp4`). Pictures switch
+right away and are saved with your other backgrounds. Videos open a control page in your browser instead:
+play, pause, mute, change the volume, and seek there while nothing changes in the show. When it's ready,
+click **Use as background** on that page (or the small **Switch** button that appears on the deck). From
+then on, the same page controls the background video live, sound included, and **Stop background video**
+takes it away. Picking a picture from Background ▾ also replaces a background video.
+
+**Now:** under the screen map shows what's on: the background (a picture name, or ▶ and the video's
+title) and the video in Video + Cams. The screen map shows the same.
 
 **Play link…** opens a small box. Paste a YouTube link (normal, `youtu.be`, Shorts, or live; a `t=`
 start time is kept) and press Enter. A link already on the clipboard is pasted in for you. The video
@@ -304,6 +316,10 @@ podcast-deck/
 ├── NOTES.md            How hosts joining online works
 ├── TODO.md             Work still to do, including the roadmap
 ├── player.html         The page OBS shows in the Video + Cams box
+├── bgcontrol.py        Background videos: the deck's page server, on this PC only
+├── bg_control.html     The browser page for previewing and controlling a background video
+├── bg_player.html      OBS's Background Video source: shows bg_frame.html when there's a video
+├── bg_frame.html       The background video player, served by the deck from localhost
 ├── backgrounds/        Pictures added from the deck (git-ignored)
 ├── config.example.py   Template config. Copy to config.py (git-ignored)
 ├── theme.py            Deck window colors and fonts
@@ -358,6 +374,11 @@ StreamKit's video widget as a Browser source.
 
 **"OBS doesn't have the new sources yet"**
 Click **Settings…** → **Rebuild layouts**. It leaves your existing sources and their settings alone.
+
+**A pasted background video doesn't show in OBS**
+The admin's deck has to be open, since OBS gets the background video from it. If you set up OBS before
+background videos existed, click **Settings…** → **Rebuild layouts** once to add the Background Video
+source.
 
 **"This video can't be played here"**
 The video's owner has turned off playing it outside YouTube, or it's private, deleted, or
@@ -455,6 +476,13 @@ Ideas welcome: open an issue.
 - Admin switch that gives guests full control: layouts, recording, background, video links, and
   every camera.
 - `REMOTE_CAMS` for bringing in remote cameras with VDO.Ninja.
+
+**Background videos and what's on**
+
+- Paste link: pictures (files or links) become the background right away; videos open a browser control
+  page, and switch only when you click Use as background (or Switch on the deck).
+- The browser page controls the background video live: play, pause, mute, volume, and seek.
+- "Now:" line and screen map labels show the background and the Video + Cams video.
 
 **Easier setup**
 
