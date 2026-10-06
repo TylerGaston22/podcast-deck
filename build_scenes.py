@@ -1,7 +1,8 @@
 """Build the podcast layouts inside OBS, over obs-websocket.
 
-Run once (and again any time you change config.py). Safe to re-run: it deletes
-and recreates only the scenes it owns, and leaves your sources alone.
+The deck does this by itself the first time it connects, and again from Settings → Rebuild
+layouts. It can also be run by hand. Safe to re-run: it deletes and recreates only the scenes it
+owns, and leaves your sources alone.
 
     py C:\\Users\\<you>\\source\\repos\\podcast-deck\\build_scenes.py
 """
@@ -12,13 +13,14 @@ import time
 import obsws_python as obs
 from obsws_python.error import OBSSDKRequestError
 
+import configfile
+import link
+import obsconfig
 import positions
 
-try:
-    import config as cfg
-except ModuleNotFoundError:
-    here = os.path.dirname(os.path.abspath(__file__))
-    sys.exit(f"No config.py yet. Copy {here}\\config.example.py to {here}\\config.py and fill in your OBS password.")
+cfg = configfile.load()
+if cfg is None:
+    sys.exit("No config.py yet. Open the deck once (Podcast Deck on your desktop) and it sets one up.")
 
 W, H = cfg.CANVAS_W, cfg.CANVAS_H
 LIB = "_Sources (don't delete)"   # holds every input once; layouts just reference them
@@ -32,7 +34,7 @@ VIDEO_BOX = (getattr(cfg, "VIDEO_X", 48), getattr(cfg, "VIDEO_Y", 162),
 # Sources. Input kinds are Windows names; the script picks the installed
 # version of each kind (e.g. text_gdiplus_v2 vs _v3) at runtime.
 # ----------------------------------------------------------------------------
-SOURCES = {
+BASE_SOURCES = {
     "Game":          ("game_capture",    {"capture_mode": "any_fullscreen"}),
     "Desktop":       ("monitor_capture", {}),
     "Browser Window":("window_capture",  {}),
@@ -46,17 +48,27 @@ SOURCES = {
                                           "reroute_audio": True, "shutdown": False}),
     "BRB Text":      ("text_gdiplus",    {"text": "Be right back", "font": {"face": "Segoe UI", "size": 120, "style": "Bold"}}),
 }
-# Cams for people in the room are webcams. Cams for people joining online show their
-# VDO.Ninja link instead (REMOTE_CAMS in config.py), with their sound recorded.
-REMOTE_CAMS = getattr(cfg, "REMOTE_CAMS", {})
-for name in cfg.CAMS:
-    if name in REMOTE_CAMS:
-        SOURCES[f"Cam - {name}"] = ("browser_source", {"url": REMOTE_CAMS[name], "width": 1280, "height": 720,
-                                                       "reroute_audio": True})
-    else:
-        SOURCES[f"Cam - {name}"] = ("dshow_input", {})
 if cfg.DISCORD_STREAMKIT_URL:
-    SOURCES["Discord Voice"] = ("browser_source", {"url": cfg.DISCORD_STREAMKIT_URL, "width": W, "height": H})
+    BASE_SOURCES["Discord Voice"] = ("browser_source", {"url": cfg.DISCORD_STREAMKIT_URL, "width": W, "height": H})
+
+
+def remote_cams():
+    """Cams for people joining online: their VDO.Ninja view link, by cam name. Guests' decks send these
+    by themselves (Start my camera); REMOTE_CAMS in config.py can add more by hand."""
+    found = {name: link.vdo_view(cam_id) for name, cam_id in link.load_remote_cams().items()}
+    return {**found, **getattr(cfg, "REMOTE_CAMS", {})}
+
+
+def sources():
+    """Every source, with cams as webcams for people in the room or VDO.Ninja links for people online."""
+    found, remote = dict(BASE_SOURCES), remote_cams()
+    for name in cfg.CAMS:
+        if name in remote:
+            found[f"Cam - {name}"] = ("browser_source", {"url": remote[name], "width": 1280, "height": 720,
+                                                         "reroute_audio": True})
+        else:
+            found[f"Cam - {name}"] = ("dshow_input", {})
+    return found
 
 # ----------------------------------------------------------------------------
 # Layouts. Each entry: (source name, x, y, box width, box height).
@@ -120,11 +132,16 @@ LAYOUTS = {
 
 def main():
     try:
-        cl = obs.ReqClient(host=cfg.OBS_HOST, port=cfg.OBS_PORT, password=cfg.OBS_PASSWORD, timeout=5)
+        cl = obs.ReqClient(host=cfg.OBS_HOST, port=obsconfig.port(cfg), password=obsconfig.password(cfg), timeout=5)
     except Exception as e:  # noqa: BLE001
-        sys.exit(f"Couldn't connect to OBS at {cfg.OBS_HOST}:{cfg.OBS_PORT}. "
-                 f"Is OBS open and the WebSocket server enabled? ({e})")
+        sys.exit(obsconfig.problem() or f"Couldn't connect to OBS. Is it open? ({e})")
+    build(cl)
+    print("\nDone. Pick webcams and the browser window from the deck: Settings.")
 
+
+def build(cl, log=print, keep_scene=None):
+    """Create the sources and layouts in OBS. keep_scene: stay on this layout afterwards if it still exists."""
+    SOURCES = sources()
     installed_kinds = cl.get_input_kind_list(False).input_kinds
     def resolve(kind):
         if kind in installed_kinds:
@@ -143,7 +160,7 @@ def main():
     for name, (kind, settings) in SOURCES.items():
         if name in inputs and name.startswith("Cam - ") and not inputs[name].startswith(kind):
             cl.remove_input(name)             # switched between a webcam and a remote link
-            print(f"  replaced source {name}")
+            log(f"  replaced source {name}")
             del inputs[name]
         if name in inputs:
             continue
@@ -155,10 +172,11 @@ def main():
                 if e.code != 601:             # 601: a source with that name still exists
                     raise
                 time.sleep(0.1)
-        print(f"  created source  {name}")
-    for name, url in REMOTE_CAMS.items():     # keep remote links current if they change
+        log(f"  created source  {name}")
+    for name, url in remote_cams().items():   # keep remote links current if they change
         if f"Cam - {name}" in SOURCES:
             cl.set_input_settings(f"Cam - {name}", {"url": url}, True)
+    assign_webcams(cl, [n for n, (kind, _) in SOURCES.items() if n.startswith("Cam - ") and kind == "dshow_input"], log)
     # Keep the video page sized to the box and pointed at this folder's player.html.
     cl.set_input_settings("Video Panel", {k: SOURCES["Video Panel"][1][k]
                                           for k in ("local_file", "width", "height")}, True)
@@ -173,7 +191,7 @@ def main():
             item_id = cl.create_scene_item(scene, src, True).scene_item_id
             cl.set_scene_item_transform(scene, item_id, positions.box_transform(x, y, bw, bh, fill=src in FILL))
             item_ids[scene, src] = item_id
-        print(f"  built layout    {scene}")
+        log(f"  built layout    {scene}")
 
     # 3. Remember each layout's usual cam spots (the deck's Reset button goes back to them), then
     #    put back any cams people have dragged somewhere else from their decks.
@@ -185,12 +203,29 @@ def main():
         for scene, box in positions.read(cl, positions.cam_slot(cam), {}).items():
             if (scene, cam) in item_ids:
                 cl.set_scene_item_transform(scene, item_ids[scene, cam], positions.box_transform(*box))
-                print(f"  kept moved cam  {cam} in {scene}")
+                log(f"  kept moved cam  {cam} in {scene}")
 
-    cl.set_current_program_scene("Gameplay + Cams")
-    print("\nDone. In OBS: double-click each 'Cam - …' source to pick its webcam, "
-          "and 'Browser Window' to pick the browser.\n"
-          "Tip: Edit Transform → 'Crop to Bounding Box' on the Just Us cams makes them fill their panels.")
+    cl.set_current_program_scene(keep_scene if keep_scene in LAYOUTS else "Gameplay + Cams")
+
+
+def webcams(cl, cam):
+    """(name, id) of every camera device OBS can see, from a webcam source's own device list."""
+    items = cl.get_input_properties_list_property_items(cam, "video_device_id").property_items
+    return [(i["itemName"], i["itemValue"]) for i in items if i["itemValue"] and i.get("itemEnabled", True)]
+
+
+def assign_webcams(cl, cams, log=print):
+    """Give each webcam source with no device picked yet the next unused camera, so it just works."""
+    if not cams:
+        return
+    picked = {c: cl.get_input_settings(c).input_settings.get("video_device_id", "") for c in cams}
+    free = [(n, v) for n, v in webcams(cl, cams[0])
+            if v not in picked.values() and "virtual" not in n.lower()]   # skip OBS's own virtual camera
+    for cam in cams:
+        if not picked[cam] and free:
+            name, value = free.pop(0)
+            cl.set_input_settings(cam, {"video_device_id": value}, True)
+            log(f"  picked webcam   {name} for {cam}")
 
 
 if __name__ == "__main__":

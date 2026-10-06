@@ -163,7 +163,7 @@ while keeping their aspect ratio.
 
 - Windows 10 or 11
 - [OBS Studio](https://obsproject.com) 28 or newer (WebSocket server built in)
-- [Python](https://www.python.org/downloads/) 3.11 or newer, with "Add to PATH" ticked during install.
+- [Python](https://www.python.org/downloads/) 3.11 or newer. `Install.bat` installs it if it's missing.
   Not needed if you use the `.exe`.
 - Python packages, all in `requirements.txt`:
   - `obsws-python`: talks to OBS
@@ -173,63 +173,26 @@ while keeping their aspect ratio.
 
 ## Setup
 
-Do this once per computer. In the paths below, `<you>` is your Windows username.
+Click-by-click steps for everyone, including guests joining online, are in [SETUP.md](SETUP.md). In
+short, on the PC that runs OBS:
 
-1. **Turn on OBS's WebSocket server.** In OBS: Tools → WebSocket Server Settings → tick Enable WebSocket
-   server → set a password → OK. Leave the port at 4455.
+1. Install [OBS](https://obsproject.com), open it once, and close it.
+2. Download this project and double-click **Install.bat**. It installs Python if needed, the add-ons,
+   and a desktop shortcut, then opens the deck.
+3. Click **I'm recording**, type everyone's name, and click **Start**.
+4. Open OBS. The deck connects by itself, builds the layouts, and picks your webcam.
 
-2. **Get the code.**
+There's no password to copy: the deck reads OBS's own, and turns on OBS's remote control if it's off.
+Webcams and the browser window for Browser + Cams can be changed any time in **Settings…**.
 
-   ```
-   git clone https://github.com/TylerGaston22/podcast-deck.git C:\Users\<you>\source\repos\podcast-deck
-   ```
-
-   Or download the ZIP from GitHub and extract it to `C:\Users\<you>\source\repos\podcast-deck`.
-
-3. **Create your config.**
-
-   ```
-   copy C:\Users\<you>\source\repos\podcast-deck\config.example.py C:\Users\<you>\source\repos\podcast-deck\config.py
-   ```
-
-   Open `C:\Users\<you>\source\repos\podcast-deck\config.py` and set at least `OBS_PASSWORD` and the `CAMS` names. See the
-   [configuration reference](#configuration-reference) for everything else.
-
-4. **Install the Python packages.**
-
-   ```
-   py -m pip install -r C:\Users\<you>\source\repos\podcast-deck\requirements.txt
-   ```
-
-5. **Build the layouts.** With OBS open:
-
-   ```
-   py C:\Users\<you>\source\repos\podcast-deck\build_scenes.py
-   ```
-
-   You'll see each source and layout listed as it's created.
-
-6. **Point the sources at your devices.** In OBS:
-   - Double-click each **Cam - …** source and pick that person's webcam.
-   - Double-click **Browser Window** and pick the browser window.
-   - **Game** is set to capture any full-screen game automatically.
-   - Optional: in the Just Us scene, right-click each cam → Transform → Edit Transform → tick
-     **Crop to Bounding Box** so the cams fill their panels instead of letterboxing.
-
-7. **Make a desktop shortcut.** Right-click `C:\Users\<you>\source\repos\podcast-deck\Podcast Deck.bat` → Send to → Desktop
-   (create shortcut). Rename it if you like, and change its icon under Properties → Change Icon.
+Optional: in the Just Us scene in OBS, right-click each cam → Transform → Edit Transform → tick **Crop to
+Bounding Box** so the cams fill their panels instead of letterboxing.
 
 ## Every session
 
 1. Open OBS.
-2. Double-click the **Podcast Deck** shortcut, or run:
-
-   ```
-   py C:\Users\<you>\source\repos\podcast-deck\deck.py
-   ```
-
-3. A small window appears and stays on top of everything. Pick your starting layout, press Record, and
-   go.
+2. Double-click **Podcast Deck** on your desktop.
+3. Pick a layout and click **Record**.
 
 ## Controls
 
@@ -274,52 +237,23 @@ admin can flip it.
 
 One PC runs OBS and records: the admin. Everyone else runs the deck on their own PC as a guest. Only
 the admin's deck ever touches OBS. Guests' decks send it requests over Tailscale, and it checks each
-one before doing anything. Guests never get OBS or its password.
+one before doing anything. Guests never get OBS or its password. Exact steps are in
+[SETUP.md](SETUP.md), Part C.
 
-**1. Get each remote camera into OBS with VDO.Ninja.** It's free and runs in the browser.
-- Each remote host opens `https://vdo.ninja/?push=<id>` in their browser and allows the camera and mic.
-  Pick a long, hard-to-guess `<id>` per person, keep it the same every session, and keep it private:
-  anyone with it can watch that camera.
-- On the admin PC, list them in `config.py`, then run `build_scenes.py` again:
-
-  ```python
-  REMOTE_CAMS = {
-      "Host 2": "https://vdo.ninja/?view=<Host 2's id>",
-  }
-  ```
-
-  That camera becomes a browser source showing their video, with their sound recorded.
-
-**2. Connect the PCs with Tailscale.** [Tailscale](https://tailscale.com) links PCs privately, as if
-they were on the same home network, with nothing opened on your router. Install it on every PC, then
-share the admin PC with each guest from the Tailscale admin console. The deck only works over
-Tailscale: the admin's deck listens on its Tailscale address and nowhere else, and guests' decks
-refuse to connect to anything that isn't a Tailscale address. Never forward ports on your router for
-the deck or OBS.
-
-Optional, for extra safety: in Tailscale's access rules, let shared guests reach only the deck's port
-(`4460`) on the admin PC, so nothing else on that PC is reachable from their side.
-
-**3. Invite each guest.** On the admin's deck, click **Guests…**, then **Copy invite** next to their
-name and send it to them privately. **New** replaces an invite (the old one stops working) and
-**Remove** takes it away.
-
-**4. Set up each guest's `config.py`:**
-
-```python
-ADMIN = False
-INVITE = "podcast-deck://100.x.y.z:4460/…"   # the invite the admin sent you
-```
-
-That's all a guest needs. They don't need OBS, they don't run `build_scenes.py`, and they never see the
-OBS password. Their deck shows their name in the title bar once it connects.
-
-People in the same room sharing one camera share one name in `CAMS` (for example `"Couch"`). They can
-all use the same invite.
-
-**With full control,** a guest's links and backgrounds are carried out by the admin's deck on the admin
-PC. A guest's Background ▾ lists the pictures saved on the admin's PC; adding new pictures is done on the
-admin's deck.
+- **Tailscale** links the PCs privately, with nothing opened on anyone's router. The admin shares their
+  PC with each guest in Tailscale. The deck only works over Tailscale: the admin's deck listens on its
+  Tailscale address and nowhere else, and guests' decks refuse to connect to anything that isn't a
+  Tailscale address.
+- **Invites** say who each guest is. The admin copies one per person from **Settings…** and sends it
+  privately. **New** replaces an invite and **Remove** cuts that person off. On first launch, a guest
+  clicks **I'm joining** and the invite on their clipboard is pasted in for them.
+- **Cameras** come in through VDO.Ninja. A guest clicks **Start my camera**: their browser opens a
+  private VDO.Ninja link that sends their camera and mic, and the admin's deck adds it to their `Cam - …`
+  source by itself. If the admin is recording at that moment, it's added as soon as the recording stops,
+  so nothing changes mid-episode.
+- **People in the same room sharing one camera** share one name and can use the same invite.
+- **Optional, for extra safety:** in Tailscale's access rules, let shared guests reach only the deck's
+  port (`4460`) on the admin PC.
 
 ## Configuration reference
 
@@ -329,7 +263,7 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 |---|---|---|
 | `OBS_HOST` | `"localhost"` | Always `"localhost"`: the deck only controls the OBS on its own PC |
 | `OBS_PORT` | `4455` | OBS WebSocket port |
-| `OBS_PASSWORD` | `"CHANGE_ME"` | OBS WebSocket password |
+| `OBS_PASSWORD` | `""` | Leave empty: the deck reads OBS's own password |
 | `CANVAS_W`, `CANVAS_H` | `1920, 1080` | Must match OBS Settings → Video → Base Resolution |
 | `CAMS` | three names | One cam per person, left to right. Changing this re-flows every layout |
 | `DISCORD_STREAMKIT_URL` | `""` | Voice widget URL from https://streamkit.discord.com/overlay. Empty to skip |
@@ -340,10 +274,11 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 | `BACKGROUND_HOTKEY` | `"ctrl+alt+b"` | Next picture in the `backgrounds` folder |
 | `VIDEO_X`, `VIDEO_Y` | `48, 162` | Top-left corner of the video box in Video + Cams |
 | `VIDEO_W`, `VIDEO_H` | `1344, 756` | Size of the video box. Leave room beside it for the cams |
-| `REMOTE_CAMS` | `{}` | VDO.Ninja view link for each person joining online, by cam name. Admin PC only |
+| `REMOTE_CAMS` | `{}` | Only for adding a VDO.Ninja camera by hand. Guests' cameras are added by themselves |
 | `ADMIN` | `True` | `True` on the PC that runs OBS and records. `False` on guests' PCs |
 | `ME` | `""` | Admin only, optional: your cam name, so the screen map selects it first |
-| `INVITE` | `""` | Guests only: the invite the admin sent you |
+| `INVITE` | `""` | Guests only: the invite the admin sent you. Filled in on first launch |
+| `CAMERA_ID` | `""` | Guests only: your private VDO.Ninja ID, made by **Start my camera** |
 | `DECK_PORT` | `4460` | Admin only: the port guests' decks connect to, over Tailscale only |
 | `MOUSE_BUTTONS` | back → next, forward → record | Keys: `"x"` (back), `"x2"` (forward), `"middle"`. Values: a scene name, `"next"`, `"record"`, or `"next background"`. `{}` turns it off |
 
@@ -362,6 +297,9 @@ podcast-deck/
 ├── positions.py        Camera spots and the guest permission switch, kept in OBS
 ├── control.py          What the deck can do: on this PC's OBS (admin) or through the admin's deck (guests)
 ├── link.py             The admin deck's door for guests: Tailscale only, invites, permission checks
+├── obsconfig.py        Reads OBS's own remote-control settings, so nobody copies the password
+├── configfile.py       Writes config.py from the first-launch window and Settings
+├── Install.bat         One-click setup: Python, add-ons, desktop shortcut
 ├── SETUP.md            Exact setup steps, click by click
 ├── NOTES.md            How hosts joining online works
 ├── TODO.md             Work still to do, including the roadmap
@@ -396,7 +334,7 @@ Tools → WebSocket Server Settings in OBS. The deck retries every two seconds, 
 own once OBS is ready.
 
 **"No config.py yet"**
-Copy `C:\Users\<you>\source\repos\podcast-deck\config.example.py` to `C:\Users\<you>\source\repos\podcast-deck\config.py` and fill it in.
+Open the deck from the desktop shortcut. The first-launch window writes `config.py` for you.
 
 **Hotkeys don't work in a specific game**
 If the game runs as administrator, Windows blocks hotkeys from programs that aren't. Run the deck as
@@ -419,8 +357,7 @@ Replace their `Cam - …` source with a Window Capture of the Discord call windo
 StreamKit's video widget as a Browser source.
 
 **"OBS doesn't have the new sources yet"**
-The Background menu and Play link box need the `Background` and `Video Panel` sources. Run
-`build_scenes.py` again to add them. It leaves your existing sources and their settings alone.
+Click **Settings…** → **Rebuild layouts**. It leaves your existing sources and their settings alone.
 
 **"This video can't be played here"**
 The video's owner has turned off playing it outside YouTube, or it's private, deleted, or
@@ -432,7 +369,7 @@ and that the admin's deck is open. The first time, Windows Firewall on the admin
 Python can accept connections; allow it on private networks.
 
 **A guest's deck says "The admin hasn't invited you"**
-Their invite was replaced or removed. The admin clicks **Guests…** → **Copy invite** and sends a new one.
+Their invite was replaced or removed. The admin clicks **Settings…** → **Copy invite** and sends a new one.
 
 **The Guests window says Tailscale isn't running**
 Start Tailscale on the admin PC, then reopen the deck. The deck won't accept guests any other way.
@@ -518,6 +455,15 @@ Ideas welcome: open an issue.
 - Admin switch that gives guests full control: layouts, recording, background, video links, and
   every camera.
 - `REMOTE_CAMS` for bringing in remote cameras with VDO.Ninja.
+
+**Easier setup**
+
+- `Install.bat`: one double-click installs Python if needed, the add-ons, and the desktop shortcut.
+- First-launch window: "I'm recording" or "I'm joining" writes `config.py`, so nobody edits it by hand.
+- The deck reads OBS's password from OBS itself, and turns on OBS's remote control if it's off.
+- Layouts are built automatically the first time, and webcams are picked automatically.
+- Settings window: webcams, browser window, Rebuild layouts, guest invites, and How it works.
+- Start my camera: guests send their camera with one click, and the admin's deck adds it by itself.
 
 ## License
 

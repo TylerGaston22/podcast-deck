@@ -7,14 +7,11 @@ into the README's Changelog.
 
 Nothing has been run against real OBS yet. Do this before building anything new.
 
-- [ ] Open OBS → Tools → WebSocket Server Settings → enable it and set a password.
-- [ ] Create `config.py` from `config.example.py` and fill in the OBS password and cam names (real
-      names only ever go in `config.py`, which is git-ignored).
-- [x] Install dependencies:
-      `py -m pip install -r C:\Users\<you>\source\repos\podcast-deck\requirements.txt`
-- [ ] Run `py C:\Users\<you>\source\repos\podcast-deck\build_scenes.py` and confirm all seven layouts
-      appear in OBS without errors.
-- [ ] In OBS, point each `Cam - …` source at a real webcam and `Browser Window` at the browser.
+- [x] Install dependencies.
+- [ ] Open the deck: the first-launch window appears. Click I'm recording, enter names, Start.
+- [ ] Open OBS: the deck connects with OBS's own password and builds all seven layouts by itself.
+- [ ] Your webcam is picked automatically. Settings… shows the right webcams and browser windows, and
+      changing them works.
 - [ ] Launch `Podcast Deck.bat` and check:
   - [ ] The window opens with no console and stays on top.
   - [ ] Colors look right: blue for the active layout, red for recording.
@@ -41,16 +38,17 @@ Nothing has been run against real OBS yet. Do this before building anything new.
 Needs at least one other person on another PC.
 
 - [ ] Install Tailscale on both PCs and share the admin PC with the guest.
-- [ ] Guest opens their VDO.Ninja push link; add their view link to `REMOTE_CAMS` on the admin PC and
-      rerun `build_scenes.py`. Their video and sound show up in their `Cam - …` source.
-- [ ] Admin: Guests… → Copy invite, send it. Guest puts it in `INVITE` with `ADMIN = False` and starts
-      the deck. It connects and the title bar shows their name.
+- [ ] Guest runs Install.bat on a fresh PC with no Python: it installs Python and opens the deck.
+- [ ] Admin: Settings… → Copy invite, send it. Guest clicks I'm joining → Join. It connects and the
+      title bar shows their name.
+- [ ] Guest clicks Start my camera: VDO.Ninja opens, and their camera shows up in the show (after the
+      recording, if one is running).
 - [ ] Guest drags and resizes their camera; it moves in OBS within a moment. They can't grab anyone
       else's.
 - [ ] The guest's layout buttons are greyed out, and Record, Background, and Play link are hidden,
       until the admin ticks "Guests get full control". Then they all work.
 - [ ] Unticking it takes the controls away again within a couple of seconds.
-- [ ] Guests… → Remove: the guest's deck stops working right away.
+- [ ] Settings… → Remove: the guest's deck stops working right away.
 - [ ] Two people dragging at the same time don't undo each other's moves.
 - [ ] Note in the README how laggy it feels over the internet, and anything else surprising.
 
@@ -82,7 +80,8 @@ Planned features, in priority order. The first two remove the most editing.
 - [ ] **Discord video as cam sources.** First-class support for people who join over a Discord call
       instead of a local webcam.
 - [ ] **Episode intro and outro scenes.** Title cards with the episode name, set before recording.
-- [ ] **Settings window.** Edit config from the deck instead of a Python file.
+- [ ] **Settings window, the rest.** Settings… covers webcams, the browser window, layouts, and
+      guests. Still in `config.py`: hotkeys, mouse buttons, sizes, and the Discord overlay.
 - [ ] **Auto-updating app (later).** Ship the deck as an installed app that updates itself, so when a
       new version is released, everyone using it gets the update without re-downloading or
       re-running setup.

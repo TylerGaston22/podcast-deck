@@ -12,15 +12,17 @@ How the deck works when hosts join from different places. Setup steps are in the
   it checks each one before doing anything. Guests never get OBS or its password.
 - **Decks only talk over Tailscale**, a private link between your PCs. Nothing is opened to the
   internet, and the deck has no way to do that.
-- **Cameras come in separately.** People in the room use webcams. People joining online use
-  VDO.Ninja: they open their own link in a browser, and the admin's OBS shows that camera with their
-  sound.
+- **Cameras come in separately.** People in the room use webcams, picked automatically. People
+  joining online click **Start my camera**: their browser sends their camera and mic through VDO.Ninja,
+  and the admin's deck puts it in their `Cam - …` source by itself (after the recording, if one is
+  running, so nothing changes mid-episode).
 
 ## Who is who
 
 - **Admin:** `ADMIN = True` in `config.py`. `ME` is optional (your camera, selected first on the map).
-- **Guest:** `ADMIN = False` and `INVITE = "…"`, the invite the admin sent them. That's all.
-- **Invites say who you are.** The admin makes one per camera name in **Guests…**, so the invite for
+- **Guest:** `ADMIN = False` and `INVITE = "…"`, the invite the admin sent them. The first-launch
+  window writes both, so nobody edits `config.py` by hand.
+- **Invites say who you are.** The admin makes one per camera name in **Settings…**, so the invite for
   Host 2 can only ever act as Host 2. **New** replaces an invite and **Remove** cuts that person off.
 - **Camera names aren't people.** Two people sharing one camera in the same room share one name, like
   `"Couch"`, and can use the same invite.
@@ -65,8 +67,9 @@ Guests' decks notice it within about two seconds, with no restart.
 
 - **In the admin's OBS** (its profile's "persistent data"): moved camera spots, each layout's usual
   spots (written by `build_scenes.py`, for Reset), and the full-control switch.
-- **On the admin's PC, next to the deck:** `guests.json` (the invites) and `backgrounds/` (the
-  pictures). Both are git-ignored.
+- **On the admin's PC, next to the deck:** `guests.json` (the invites), `remote_cams.json` (guests'
+  VDO.Ninja IDs), and `backgrounds/` (the pictures). All git-ignored.
+- **OBS's password** stays in OBS's own settings. The admin's deck reads it from there.
 
 ## Status
 

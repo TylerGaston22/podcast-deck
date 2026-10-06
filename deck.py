@@ -11,17 +11,22 @@ records) is the only thing that touches OBS. Guests' decks send it requests over
 an invite from the admin, and the admin's deck checks each one first. Guests can always move their
 own camera on the screen map, and get every other control when the admin turns on full control.
 
+The first launch asks one question (recording, or joining?) and writes config.py itself.
+
     py C:\\Users\\<you>\\source\\repos\\podcast-deck\\deck.py
 """
 import os
+import subprocess
 import threading
 import time
 import tkinter as tk
-from tkinter import filedialog, messagebox
+import webbrowser
+from tkinter import filedialog, messagebox, ttk
 
 import keyboard
 import mouse
 
+import configfile
 import control
 import link
 import media
@@ -29,17 +34,21 @@ import positions
 from control import DeckError
 from theme import BG, KEY, KEY_HOVER, INK, INK_DIM, LIT, LIT_INK, REC, FONT, STATUS_FONT
 
-try:
-    import config as cfg
-except ModuleNotFoundError:
-    import sys
-    here = os.path.dirname(os.path.abspath(__file__))
-    sys.exit(f"No config.py yet. Copy {here}\\config.example.py to {here}\\config.py and fill in your OBS password.")
-
-BACKGROUND_HOTKEY = getattr(cfg, "BACKGROUND_HOTKEY", "ctrl+alt+b")
-ADMIN = getattr(cfg, "ADMIN", True)            # older config.py files are the single-PC setup
-DECK_PORT = getattr(cfg, "DECK_PORT", 4460)
 HANDLE = 10                                    # px: grab this close to a box's corner to resize it
+NOTES = os.path.join(media.APP_DIR, "NOTES.md")
+cfg, ADMIN, DECK_PORT, BACKGROUND_HOTKEY = None, True, 4460, "ctrl+alt+b"
+
+
+def use_config(found):
+    global cfg, ADMIN, DECK_PORT, BACKGROUND_HOTKEY
+    cfg = found
+    ADMIN = getattr(cfg, "ADMIN", True)        # older config.py files are the single-PC setup
+    DECK_PORT = getattr(cfg, "DECK_PORT", 4460)
+    BACKGROUND_HOTKEY = getattr(cfg, "BACKGROUND_HOTKEY", "ctrl+alt+b")
+
+
+if configfile.load() is not None:              # no config.py yet: the welcome window makes one
+    use_config(configfile.load())
 
 
 class Deck:
@@ -74,28 +83,36 @@ class Deck:
                                anchor="w", justify="left", wraplength=280)
         self.status.pack(fill="x", padx=12, pady=(12, 6))
         self.grid = tk.Frame(root, bg=BG)
+        # Everything under the layout buttons sits at the bottom and always stays visible; the layout
+        # buttons get whatever room is left.
+        bottom = tk.Frame(root, bg=BG)
+        bottom.pack(side="bottom", fill="x")
         self.grid.pack(fill="both", expand=True, padx=12)
 
         # Screen map: drag a camera to move it, drag its corner to resize it.
-        self.map = tk.Canvas(root, bg=BG, highlightthickness=0, height=150, cursor="hand2")
+        self.map = tk.Canvas(bottom, bg=BG, highlightthickness=0, height=150, cursor="hand2")
         self.map.pack(fill="x", padx=12, pady=(12, 0))
         self.map.bind("<Configure>", self.fit_map)
         self.map.bind("<ButtonPress-1>", self.map_press)
         self.map.bind("<B1-Motion>", self.map_drag)
         self.map.bind("<ButtonRelease-1>", self.map_release)
-        under = tk.Frame(root, bg=BG)
+        under = tk.Frame(bottom, bg=BG)
         under.pack(fill="x", padx=12, pady=(6, 0))
-        self.reset_button = self.key(under, "Reset camera" if ADMIN else "Reset my camera", self.reset_camera)
-        self.reset_button.pack(side="left", ipady=2)
+        self.reset_button = self.small_key(under, "Reset camera" if ADMIN else "Reset my camera", self.reset_camera)
+        self.reset_button.pack(side="left")
+        self.small_key(under, "Settings…", self.settings_box).pack(side="right")
+        if not ADMIN:
+            start = self.small_key(under, "Start my camera", self.start_camera)
+            start.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
+            start.pack(side="right", padx=4)
         if ADMIN:
-            self.key(under, "Guests…", self.guests_box).pack(side="right", ipady=2)
             self.full_var = tk.BooleanVar(value=False)
-            tk.Checkbutton(root, text="Guests get full control", variable=self.full_var, anchor="w",
+            tk.Checkbutton(bottom, text="Guests get full control", variable=self.full_var, anchor="w",
                            command=self.set_full, bg=BG, fg=INK_DIM, selectcolor=KEY, activebackground=BG,
                            activeforeground=INK, font=STATUS_FONT).pack(fill="x", padx=8, pady=(6, 0))
 
         # Record, Background, and Play link: always on the admin deck, on guests' only with full control.
-        self.controls = tk.Frame(root, bg=BG)
+        self.controls = tk.Frame(bottom, bg=BG)
         self.controls.pack(fill="x")
         extras = tk.Frame(self.controls, bg=BG)
         extras.pack(fill="x", padx=12, pady=(12, 0))
@@ -104,7 +121,7 @@ class Deck:
         self.key(extras, "Play link…", self.play_link).pack(side="left", fill="x", expand=True, padx=(3, 0), ipady=6)
         self.rec = self.key(self.controls, "Record", self.toggle_record)
         self.rec.pack(fill="x", padx=12, pady=12, ipady=8)
-        tk.Frame(root, bg=BG, height=12).pack()
+        tk.Frame(bottom, bg=BG, height=12).pack()
         if not ADMIN:
             self.controls.pack_forget()
         self.set_control_hotkeys(ADMIN)
@@ -223,57 +240,134 @@ class Deck:
             keyboard.add_hotkey(BACKGROUND_HOTKEY, lambda: self.root.after(0, self.next_background)),
         ] if on else []
 
-    # --- Guests (admin) ----------------------------------------------------
-    def guests_box(self):
-        """Invite guests, copy their invites, or take an invite away."""
+    # --- Settings -----------------------------------------------------------
+    def settings_box(self):
+        """Admin: cameras, browser window, rebuild, guests. Guest: change invite. Both: how it works."""
         win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
-        win.title("Guests")
+        win.title("Settings")
         win.attributes("-topmost", True)
         win.transient(self.root)
         win.resizable(False, False)
-        on = self.link and self.link.httpd
-        tk.Label(win, bg=BG, fg=INK if on else REC, font=STATUS_FONT, anchor="w", justify="left", wraplength=380,
-                 text=(f"Guests connect over Tailscale to {self.link.ip}. Send each person their own invite, "
-                       "privately. They paste it into INVITE in their config.py.") if on else
-                      ("Tailscale isn't running on this PC, so guests can't connect. Start Tailscale, "
-                       "then reopen the deck.")).pack(fill="x", pady=(0, 10))
-        rows = tk.Frame(win, bg=BG)
-        rows.pack(fill="x")
-
-        def fill():
-            for w in rows.winfo_children():
-                w.destroy()
-            invites = link.load_invites()
-            names = [n for n in cfg.CAMS if f"Cam - {n}" != self.me]
-            for r, name in enumerate(names):
-                tk.Label(rows, text=name, bg=BG, fg=INK, font=FONT, anchor="w").grid(row=r, column=0, sticky="w")
-                tk.Label(rows, text="invited" if name in invites else "not invited", bg=BG, fg=INK_DIM,
-                         font=STATUS_FONT).grid(row=r, column=1, padx=10)
-                copy = self.key(rows, "Copy invite", lambda n=name: copy_invite(n, fresh=False))
-                copy.config(state="normal" if on else "disabled")
-                copy.grid(row=r, column=2, pady=3)
-                if name in invites:
-                    self.key(rows, "New", lambda n=name: copy_invite(n, fresh=True)).grid(row=r, column=3, padx=4)
-                    self.key(rows, "Remove", lambda n=name: remove(n)).grid(row=r, column=4)
-
-        def copy_invite(name, fresh):
-            code = link.load_invites().get(name)
-            if fresh or not code:
-                code = link.new_invite(name)
-            self.root.clipboard_clear()
-            self.root.clipboard_append(link.invite_text(self.link.ip, DECK_PORT, code))
-            self.say(f"Invite for {name} copied. Send it to them privately."
-                     + (" Their old invite no longer works." if fresh else ""), seconds=8)
-            fill()
-
-        def remove(name):
-            link.remove_invite(name)
-            self.say(f"{name}'s invite removed. Their deck can't connect any more.", seconds=8)
-            fill()
-
-        fill()
-        self.key(win, "Close", win.destroy).pack(anchor="e", pady=(12, 0))
         win.bind("<Escape>", lambda _e: win.destroy())
+
+        def heading(text):
+            tk.Label(win, text=text, bg=BG, fg=INK, font=FONT, anchor="w").pack(fill="x", pady=(10, 4))
+
+        def note(text, color=INK_DIM):
+            tk.Label(win, text=text, bg=BG, fg=color, font=STATUS_FONT, anchor="w", justify="left",
+                     wraplength=420).pack(fill="x")
+
+        if ADMIN:
+            heading("Cameras")
+            cams = tk.Frame(win, bg=BG)
+            cams.pack(fill="x")
+            self.call(lambda b: b.devices(), then=lambda found: self.fill_devices(cams, found))
+
+            heading("Layouts")
+            note("Rebuild after changing config.py. Cameras you've moved stay where they are.")
+            self.small_key(win, "Rebuild layouts", lambda: self.call(
+                lambda b: b.rebuild(), then=lambda _: self.say("Layouts rebuilt"))).pack(anchor="w", pady=(4, 0))
+
+            heading("Guests")
+            on = self.link and self.link.httpd
+            note(f"Guests connect over Tailscale ({self.link.ip}). Send each person their own invite, privately."
+                 if on else "Tailscale isn't running on this PC, so guests can't connect yet. Start Tailscale; "
+                            "the deck notices within ten seconds.", INK_DIM if on else REC)
+            rows = tk.Frame(win, bg=BG)
+            rows.pack(fill="x", pady=(4, 0))
+            self.fill_guests(rows, on)
+        else:
+            heading("Invite")
+            note("Copy the new invite the admin sent you, then click Paste invite.")
+            self.small_key(win, "Paste invite", lambda: self.paste_invite(win)).pack(anchor="w", pady=(4, 0))
+
+        heading("Help")
+        self.small_key(win, "How it works", lambda: subprocess.Popen(["notepad.exe", NOTES])).pack(anchor="w")
+        self.key(win, "Close", win.destroy).pack(anchor="e", pady=(14, 0))
+
+    def fill_devices(self, frame, found):
+        """Settings: one dropdown per webcam camera, plus the browser window for Browser + Cams."""
+        def row(r, label, choices, current, on_pick):
+            tk.Label(frame, text=label, bg=BG, fg=INK, font=STATUS_FONT, anchor="w").grid(row=r, column=0, sticky="w")
+            names = [n for n, _ in choices]
+            box = ttk.Combobox(frame, values=names, state="readonly", width=34)
+            box.set(next((n for n, v in choices if v == current), "Pick one…"))
+            box.bind("<<ComboboxSelected>>", lambda _e: on_pick(choices[box.current()][1]))
+            box.grid(row=r, column=1, padx=8, pady=2, sticky="w")
+
+        r = 0
+        for name, cam in found["cams"].items():
+            if cam["online"]:
+                tk.Label(frame, text=name, bg=BG, fg=INK, font=STATUS_FONT).grid(row=r, column=0, sticky="w")
+                tk.Label(frame, text="joins online (VDO.Ninja)", bg=BG, fg=INK_DIM, font=STATUS_FONT).grid(
+                    row=r, column=1, padx=8, sticky="w")
+            else:
+                row(r, name, cam["choices"], cam["current"],
+                    lambda v, n=name: self.call(lambda b: b.set_webcam(n, v), then=lambda _: self.say("Webcam set")))
+            r += 1
+        row(r, "Browser window", found["windows"], found["window"],
+            lambda v: self.call(lambda b: b.set_window(v), then=lambda _: self.say("Browser window set")))
+
+    def fill_guests(self, rows, on):
+        for w in rows.winfo_children():
+            w.destroy()
+        invites = link.load_invites()
+        for r, name in enumerate(n for n in cfg.CAMS if f"Cam - {n}" != self.me):
+            tk.Label(rows, text=name, bg=BG, fg=INK, font=STATUS_FONT, anchor="w").grid(row=r, column=0, sticky="w")
+            tk.Label(rows, text="invited" if name in invites else "not invited", bg=BG, fg=INK_DIM,
+                     font=STATUS_FONT).grid(row=r, column=1, padx=10)
+            copy = self.small_key(rows, "Copy invite", lambda n=name: self.copy_invite(rows, on, n, fresh=False))
+            copy.config(state="normal" if on else "disabled")
+            copy.grid(row=r, column=2, pady=2)
+            if name in invites:
+                self.small_key(rows, "New", lambda n=name: self.copy_invite(rows, on, n, fresh=True)).grid(
+                    row=r, column=3, padx=4)
+                self.small_key(rows, "Remove", lambda n=name: self.remove_invite(rows, on, n)).grid(row=r, column=4)
+
+    def copy_invite(self, rows, on, name, fresh):
+        code = link.load_invites().get(name)
+        if fresh or not code:
+            code = link.new_invite(name)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(link.invite_text(self.link.ip, DECK_PORT, code))
+        self.say(f"Invite for {name} copied. Send it to them privately."
+                 + (" Their old invite no longer works." if fresh else ""), seconds=8)
+        self.fill_guests(rows, on)
+
+    def remove_invite(self, rows, on, name):
+        link.remove_invite(name)
+        self.say(f"{name}'s invite removed. Their deck can't connect any more.", seconds=8)
+        self.fill_guests(rows, on)
+
+    def paste_invite(self, win=None):
+        """Guest: take a new invite from the clipboard and reconnect with it."""
+        try:
+            text = self.root.clipboard_get().strip()
+        except tk.TclError:
+            text = ""
+        if not text.startswith(link.PREFIX):
+            self.tell("There's no invite on the clipboard. Copy the whole invite the admin sent you, then try again.")
+            return
+        configfile.update(INVITE=text)
+        cfg.INVITE = text
+        self.backend, self.next_link_try = None, 0.0
+        self.say("Invite saved. Connecting…")
+        if win:
+            win.destroy()
+
+    # --- Camera (guest) ----------------------------------------------------
+    def start_camera(self):
+        """Guest: send your camera and mic with VDO.Ninja, and have the admin's deck put it in the show."""
+        cam_id = getattr(cfg, "CAMERA_ID", "") or link.new_camera_id()
+        if cam_id != getattr(cfg, "CAMERA_ID", ""):
+            configfile.update(CAMERA_ID=cam_id)
+            cfg.CAMERA_ID = cam_id
+        webbrowser.open(link.vdo_push(cam_id))
+        if self.backend is None:
+            self.say("Opened your camera page. It's added to the show once your deck connects; click again then.")
+            return
+        self.call(lambda b: b.camera(cam_id), then=lambda msg: self.say(
+            f"Opened your camera page: allow the camera and mic there. {msg}", seconds=10))
 
     # --- Screen map --------------------------------------------------------
     def scale(self):
@@ -513,6 +607,11 @@ class Deck:
                       activeforeground=INK, relief="flat", bd=0, cursor="hand2", anchor="w", padx=14)
         return b
 
+    def small_key(self, parent, text, cmd):
+        b = self.key(parent, text, cmd)
+        b.config(font=STATUS_FONT, padx=10, pady=4)
+        return b
+
     def say(self, text, seconds=4):
         """Show a short message in the status line, without stealing focus."""
         self.notice, self.notice_until = text, time.monotonic() + seconds
@@ -536,6 +635,8 @@ class Deck:
             self.root.title(f"Deck · {you}" if you else "Deck · guest")
             if self.selected is None:
                 self.selected = self.me
+        if state.get("note"):
+            self.say(state["note"], seconds=10)
         self.canvas = tuple(state["canvas"])
         full = state["full"]
         self.full = full
@@ -591,14 +692,101 @@ class Deck:
             label = f"{name}    {cfg.HOTKEY_PREFIX}{i}" if i <= 9 and live else name
             b = self.key(self.grid, label, lambda n=name: self.switch(n))
             b.config(state="normal" if live else "disabled", cursor="hand2" if live else "arrow")
-            b.pack(fill="both", expand=True, pady=3, ipady=6)
+            b.pack(fill="both", expand=True, pady=2, ipady=2)
             self.buttons[name] = b
             if i <= 9 and live:
                 self.hotkeys.append(keyboard.add_hotkey(
                     f"{cfg.HOTKEY_PREFIX}{i}", lambda n=name: self.root.after(0, self.switch, n)))
 
 
+def welcome(root):
+    """First launch: one question, then config.py is written and the deck opens."""
+    root.title("Podcast Deck")
+    root.configure(bg=BG)
+    root.attributes("-topmost", True)
+    root.geometry("420x330")
+    frame = tk.Frame(root, bg=BG, padx=20, pady=18)
+    frame.pack(fill="both", expand=True)
+    key = lambda parent, text, cmd: Deck.key(None, parent, text, cmd)   # the deck's button style, no deck yet
+
+    def clear():
+        for w in frame.winfo_children():
+            w.destroy()
+
+    def label(text, font=STATUS_FONT, color=INK_DIM):
+        tk.Label(frame, text=text, bg=BG, fg=color, font=font, anchor="w", justify="left",
+                 wraplength=370).pack(fill="x", pady=(0, 8))
+
+    def entry(value):
+        e = tk.Entry(frame, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+        e.insert(0, value)
+        e.pack(fill="x", ipady=6, pady=(0, 6))
+        e.focus_set()
+        return e
+
+    def done(**values):
+        if configfile.load() is None:
+            configfile.create(**values)
+        else:
+            configfile.update(**values)
+        use_config(configfile.load())
+        root.unbind("<Return>")
+        frame.destroy()
+        Deck(root)
+
+    def recording():
+        clear()
+        label("Who's on the show?", FONT, INK)
+        label("One name per camera, left to right, separated by commas. People sharing a camera share a name.")
+        names = entry("Host 1, Host 2, Host 3")
+        problem = tk.Label(frame, text="", bg=BG, fg=REC, font=STATUS_FONT, anchor="w")
+        problem.pack(fill="x")
+
+        def go(_e=None):
+            cams = [n.strip() for n in names.get().split(",") if n.strip()]
+            if not cams:
+                problem.config(text="Add at least one name.")
+                return
+            done(ADMIN=True, CAMS=cams)
+        key(frame, "Start", go).pack(anchor="e", pady=(8, 0))
+        root.bind("<Return>", go)
+
+    def joining():
+        clear()
+        label("Paste your invite", FONT, INK)
+        label("The admin sends you an invite that starts with podcast-deck://. Copy all of it and paste it here.")
+        try:
+            clip = root.clipboard_get().strip()
+        except tk.TclError:
+            clip = ""
+        invite = entry(clip if clip.startswith(link.PREFIX) else "")
+        problem = tk.Label(frame, text="", bg=BG, fg=REC, font=STATUS_FONT, anchor="w", wraplength=370,
+                           justify="left")
+        problem.pack(fill="x")
+
+        def go(_e=None):
+            text = invite.get().strip()
+            if not text.startswith(link.PREFIX):
+                problem.config(text="That doesn't look like an invite. It starts with podcast-deck://")
+                return
+            done(ADMIN=False, INVITE=text)
+        key(frame, "Join", go).pack(anchor="e", pady=(8, 0))
+        root.bind("<Return>", go)
+
+    if cfg is not None and not ADMIN:           # a guest whose invite is missing
+        joining()
+        return
+    label("Podcast Deck", FONT, INK)
+    label("Is this the PC that runs OBS and records, or are you joining someone else's recording?")
+    big = dict(fill="x", ipady=10, pady=4)
+    key(frame, "I'm recording (this PC runs OBS)", recording).pack(**big)
+    key(frame, "I'm joining from somewhere else", joining).pack(**big)
+
+
 if __name__ == "__main__":
     root = tk.Tk()
-    Deck(root)
+    if cfg is None or (not ADMIN and not getattr(cfg, "INVITE", "")):
+        welcome(root)
+    else:
+        Deck(root)
     root.mainloop()

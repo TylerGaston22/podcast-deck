@@ -26,6 +26,8 @@ INVITES = os.path.join(media.APP_DIR, "guests.json")  # {cam name: invite code},
 PREFIX = "podcast-deck://"
 MAX_BODY = 16 * 1024
 _YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+_CAMERA_ID = re.compile(r"[A-Za-z0-9_]{12,64}")
+REMOTE_CAMS = os.path.join(media.APP_DIR, "remote_cams.json")   # {cam name: VDO.Ninja ID}, git-ignored
 
 
 # --- Tailscale ---------------------------------------------------------------
@@ -54,6 +56,41 @@ def tailscale_ip():
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
     return None
+
+
+# --- Remote cameras (VDO.Ninja) ----------------------------------------------
+def new_camera_id():
+    """A long, hard-to-guess VDO.Ninja ID. Anyone who has it can watch that camera, so it stays private."""
+    return "pd_" + secrets.token_hex(12)
+
+
+def vdo_push(cam_id):
+    """The link a guest opens to send their camera and mic. &webcam skips VDO.Ninja's screen-share choice."""
+    return f"https://vdo.ninja/?push={cam_id}&webcam"
+
+
+def vdo_view(cam_id):
+    return f"https://vdo.ninja/?view={cam_id}"
+
+
+def load_remote_cams():
+    try:
+        with open(REMOTE_CAMS, encoding="utf-8") as f:
+            found = json.load(f)
+        return {k: v for k, v in found.items() if isinstance(v, str) and _CAMERA_ID.fullmatch(v)}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def save_remote_cam(name, cam_id):
+    """Remember a guest's camera ID. True if it changed."""
+    found = load_remote_cams()
+    if found.get(name) == cam_id:
+        return False
+    found[name] = cam_id
+    with open(REMOTE_CAMS, "w", encoding="utf-8") as f:
+        json.dump(found, f, indent=2)
+    return True
 
 
 # --- Invites -----------------------------------------------------------------
@@ -206,6 +243,12 @@ class LinkServer:
             if action == "reset":
                 return local.reset(scene, cam)
             return local.move(scene, cam, valid_box(args.get("box"), local.canvas), save=bool(args.get("save")))
+
+        if action == "camera":                 # Start my camera: always their own camera only
+            cam_id = args.get("id")
+            if not (isinstance(cam_id, str) and _CAMERA_ID.fullmatch(cam_id)):
+                raise DeckError("That camera ID doesn't look right.")
+            return local.set_remote_cam(name, cam_id)
 
         if not local.full():
             raise PermissionError("The admin hasn't given you full control.")

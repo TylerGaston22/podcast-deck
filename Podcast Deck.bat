@@ -1,5 +1,9 @@
 @echo off
-rem Launches the deck with no console window. Make a desktop shortcut to this file.
+rem Launches the deck with no console window. Make a desktop shortcut to this file (Install.bat does).
 cd /d "%~dp0"
-if not exist config.py copy config.example.py config.py >nul
-start "" pythonw "%~dp0deck.py"
+where pyw >nul 2>nul
+if errorlevel 1 (
+  start "" pythonw "%~dp0deck.py"
+) else (
+  start "" pyw "%~dp0deck.py"
+)

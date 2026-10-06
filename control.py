@@ -17,10 +17,12 @@ from obsws_python.error import OBSSDKRequestError
 
 import link
 import media
+import obsconfig
 import positions
 
 HIDDEN = {"_Sources (don't delete)"}
-NOT_BUILT = "OBS doesn't have the new sources yet. Run build_scenes.py again to add them."
+NOT_BUILT = "OBS doesn't have the new sources yet. Click Settings → Rebuild layouts to add them."
+OBS_CLOSED = "OBS not reachable. Open OBS; this window connects by itself."
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
@@ -39,10 +41,14 @@ def _locked(fn):
                 raise DeckError(NOT_BUILT if e.code == 600 else str(e)) from e   # 600: no source by that name
             except DeckError:
                 raise
+            except SystemExit as e:            # build_scenes.py explaining a config problem
+                raise DeckError(str(e)) from e
+            except ConnectionError:
+                self.cl = None
+                raise
             except Exception as e:
                 self.cl = None
-                raise ConnectionError("OBS not reachable. Open OBS and enable the WebSocket server; "
-                                      "this window reconnects on its own.") from e
+                raise ConnectionError(OBS_CLOSED) from e
     return wrapper
 
 
@@ -57,20 +63,49 @@ class Local:
         self.lock = threading.Lock()
         self.canvas = (cfg.CANVAS_W, cfg.CANVAS_H)
         self.ids = {}                          # (layout, source name) → OBS scene item id
+        self.checked_layouts = False           # first connection: build the layouts if OBS has none yet
+        self.rebuild_waiting = False           # a guest's camera arrived mid-recording; rebuild after
+        self.note = None                       # something the window should mention once
 
     def client(self):
+        """Connect with OBS's own password, read from OBS's settings, so nobody has to copy it."""
         if self.cl is None:
-            cl = obs.ReqClient(host=self.cfg.OBS_HOST, port=self.cfg.OBS_PORT, password=self.cfg.OBS_PASSWORD,
-                               timeout=3)
+            try:
+                cl = obs.ReqClient(host=self.cfg.OBS_HOST, port=obsconfig.port(self.cfg),
+                                   password=obsconfig.password(self.cfg), timeout=3)
+            except Exception as e:  # noqa: BLE001
+                raise ConnectionError(obsconfig.problem() or OBS_CLOSED) from e
             video = cl.get_video_settings()
             self.canvas = (video.base_width, video.base_height)
             self.cl = cl
         return self.cl
 
+    def _build(self, cl, keep_scene=None):
+        import build_scenes                    # needs config.py, so only imported once there is one
+        build_scenes.build(cl, log=lambda _line: None, keep_scene=keep_scene)
+        self.ids.clear()
+
+    @_locked
+    def rebuild(self):
+        """Settings → Rebuild layouts."""
+        cl = self.client()
+        self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
+
     @_locked
     def state(self):
         cl = self.client()
         scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes)]
+        recording = cl.get_record_status().output_active
+        if not self.checked_layouts:
+            self.checked_layouts = True
+            if "Gameplay + Cams" not in scenes:  # a fresh OBS: set everything up without being asked
+                self._build(cl)
+                self.note = "Layouts set up in OBS. Pick webcams any time in Settings."
+                scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes)]
+        if self.rebuild_waiting and not recording:
+            self.rebuild_waiting = False
+            self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
+            self.note = "A guest's camera was added."
         current = cl.get_current_program_scene().current_program_scene_name
         items = []
         for i in cl.get_scene_item_list(current).scene_items:
@@ -78,9 +113,10 @@ class Local:
             if i["sceneItemEnabled"] and (name.startswith("Cam - ") or name == "Video Panel"):
                 self.ids[current, name] = i["sceneItemId"]
                 items.append({"name": name, "box": list(positions.item_box(i["sceneItemTransform"]))})
+        note, self.note = self.note, None
         return {"scenes": [s for s in scenes if s not in HIDDEN], "current": current,
-                "recording": cl.get_record_status().output_active, "full": self._full(cl),
-                "items": items, "canvas": list(self.canvas)}
+                "recording": recording, "full": self._full(cl), "items": items, "canvas": list(self.canvas),
+                "note": note}
 
     def _full(self, cl):
         return bool(positions.read(cl, positions.GUESTS_FULL_CONTROL, False))
@@ -130,6 +166,51 @@ class Local:
         self._place(cl, scene, cam, box)
         positions.forget(cl, cam, scene)
         return True
+
+    @_locked
+    def devices(self):
+        """For Settings: each cam's webcam choices, and the browser window choices."""
+        import build_scenes
+        cl = self.client()
+        cams = {}
+        for name in self.cfg.CAMS:
+            cam = f"Cam - {name}"
+            found = cl.get_input_settings(cam)
+            if found.input_kind.startswith("dshow_input"):
+                cams[name] = {"online": False, "current": found.input_settings.get("video_device_id", ""),
+                              "choices": build_scenes.webcams(cl, cam)}
+            else:
+                cams[name] = {"online": True}
+        items = cl.get_input_properties_list_property_items("Browser Window", "window").property_items
+        current = cl.get_input_settings("Browser Window").input_settings.get("window", "")
+        return {"cams": cams, "window": current,
+                "windows": [(i["itemName"], i["itemValue"]) for i in items if i["itemValue"]]}
+
+    @_locked
+    def set_webcam(self, name, device):
+        self.client().set_input_settings(f"Cam - {name}", {"video_device_id": device}, True)
+
+    @_locked
+    def set_window(self, window):
+        self.client().set_input_settings("Browser Window", {"window": window}, True)
+
+    @_locked
+    def set_remote_cam(self, name, cam_id):
+        """A guest pressed Start my camera: show their VDO.Ninja camera in their Cam source."""
+        cl = self.client()
+        changed = link.save_remote_cam(name, cam_id)
+        cam = f"Cam - {name}"
+        found = cl.get_input_settings(cam)
+        if found.input_kind == "browser_source":
+            if changed or found.input_settings.get("url") != link.vdo_view(cam_id):
+                cl.set_input_settings(cam, {"url": link.vdo_view(cam_id)}, True)
+            return "Your camera is in the show."
+        # Their cam was a webcam source: it has to be swapped, which rebuilds the layouts. Never mid-recording.
+        if cl.get_record_status().output_active:
+            self.rebuild_waiting = True
+            return "Your camera will be added as soon as the recording stops."
+        self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
+        return "Your camera is in the show."
 
     @_locked
     def backgrounds(self):
@@ -232,6 +313,9 @@ class Remote:
 
     def play_video(self, vid=None, start=0):
         self._do("play_video", vid=vid, start=start)
+
+    def camera(self, cam_id):
+        return self._do("camera", id=cam_id)
 
 
 def valid_box(box, canvas):
