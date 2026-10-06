@@ -146,7 +146,7 @@ switching behind controls you can use without leaving the game.
 | **Just Us** | Everyone the same size, split evenly across the background picture | Discussion, intros, outros |
 | **Gameplay Only** | Game, nothing else | Cinematics, moments that need the whole screen |
 | **Be Right Back** | Background picture with "Be right back" | Breaks between episodes |
-| **Video + Cams** | A YouTube video in a fixed box, cams in a column beside it, background picture behind | Trailers and clips without a browser window on screen |
+| **Video + Cams** | A YouTube video large on the right, cams stacked down the left, a dark border (or your background) around them | Trailers and clips without a browser window on screen |
 
 The background picture comes from the deck's **Background** menu. Until one is picked, these layouts use
 a plain dark color. The video comes from the deck's **Play link…** box. The Video + Cams box size and
@@ -284,8 +284,8 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 | `HOTKEY_PREFIX` | `"ctrl+alt+"` | Layout hotkeys are this plus a number |
 | `RECORD_HOTKEY` | `"ctrl+alt+r"` | Start/stop recording |
 | `BACKGROUND_HOTKEY` | `"ctrl+alt+b"` | Next picture in the `backgrounds` folder |
-| `VIDEO_X`, `VIDEO_Y` | `48, 162` | Top-left corner of the video box in Video + Cams |
-| `VIDEO_W`, `VIDEO_H` | `1344, 756` | Size of the video box. Leave room beside it for the cams |
+| `VIDEO_X`, `VIDEO_Y` | `432, 135` | Top-left corner of the video box in Video + Cams |
+| `VIDEO_W`, `VIDEO_H` | `1440, 810` | Size of the video box. Leave room beside it for the cams |
 | `REMOTE_CAMS` | `{}` | Only for adding a VDO.Ninja camera by hand. Guests' cameras are added by themselves |
 | `ADMIN` | `True` | `True` on the PC that runs OBS and records. `False` on guests' PCs |
 | `ME` | `""` | Admin only, optional: your cam name, so the screen map selects it first |

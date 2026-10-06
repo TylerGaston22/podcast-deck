@@ -41,8 +41,9 @@ MARGIN = 24
 
 # Video + Cams layout: the box the video plays in (left edge, top edge, width, height).
 # The cams stack in a column on whichever side has more room, so leave space beside it.
-VIDEO_X, VIDEO_Y = 48, 162
-VIDEO_W, VIDEO_H = 1344, 756
+# The default puts the video on the right and the cams down the left.
+VIDEO_X, VIDEO_Y = 432, 135
+VIDEO_W, VIDEO_H = 1440, 810
 
 # Global hotkeys for deck.py — work even while a game is full screen.
 # Scene N (in OBS order) = HOTKEY_PREFIX + N, e.g. ctrl+alt+1 ... ctrl+alt+9.

@@ -27,8 +27,8 @@ LIB = "_Sources (don't delete)"   # holds every input once; layouts just referen
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Video + Cams box. Older config.py files without these get the defaults.
-VIDEO_BOX = (getattr(cfg, "VIDEO_X", 48), getattr(cfg, "VIDEO_Y", 162),
-             getattr(cfg, "VIDEO_W", 1344), getattr(cfg, "VIDEO_H", 756))
+VIDEO_BOX = (getattr(cfg, "VIDEO_X", 432), getattr(cfg, "VIDEO_Y", 135),
+             getattr(cfg, "VIDEO_W", 1440), getattr(cfg, "VIDEO_H", 810))
 
 # ----------------------------------------------------------------------------
 # Sources. Input kinds are Windows names; the script picks the installed
