@@ -7,6 +7,8 @@ canvas pixels, the same shape build_scenes.py uses for layouts.
 REALM = "OBS_WEBSOCKET_DATA_REALM_PROFILE"
 GUESTS_FULL_CONTROL = "podcast_deck.guests_full_control"   # True: guests get every admin control
 DEFAULTS = "podcast_deck.default_positions"     # {layout: {cam source: box}}, written by build_scenes.py
+NAME_TAGS = "podcast_deck.name_tags"            # show names on cams (default on)
+BG_LAYOUTS = "podcast_deck.bg_layouts"          # {background picture file name: layout to switch to}
 
 
 def cam_slot(cam):
@@ -36,15 +38,42 @@ def forget(cl, cam, layout):
         write(cl, cam_slot(cam), spots)
 
 
-def box_transform(x, y, w, h, fill=False):
-    """OBS transform that fits a source inside a box (or covers it, when `fill`), anchored top-left."""
+def box_transform(x, y, w, h, fill=False, align=0):
+    """OBS transform that fits a source inside a box (or covers it, when `fill`), anchored top-left.
+    align: where in the box the source sits (0 = center, 9 = bottom-left)."""
     return {
         "positionX": x, "positionY": y,
         "alignment": 5,                       # top-left anchor
         "boundsType": "OBS_BOUNDS_SCALE_OUTER" if fill else "OBS_BOUNDS_SCALE_INNER",
-        "boundsAlignment": 0,                 # center within box
+        "boundsAlignment": align,
         "boundsWidth": w, "boundsHeight": h,
     }
+
+
+def tag_name(cam):
+    """The name tag source that goes with a cam: "Cam - Host 1" → "Name - Host 1"."""
+    return "Name - " + cam.removeprefix("Cam - ")
+
+
+def tag_box(box):
+    """Where a cam's name tag sits: the bottom-left corner of the cam, sized to the cam."""
+    x, y, w, h = box
+    th, m = max(18, h * 0.13), max(4, h * 0.04)
+    return x + m, y + h - th - m, w * 0.7, th
+
+
+def tag_transform(box):
+    return box_transform(*tag_box(box), align=9)
+
+
+def place_tag(cl, scene, cam, box):
+    """Move a cam's name tag along with it. Layouts without name tags are fine."""
+    from obsws_python.error import OBSSDKRequestError
+    try:
+        tag_id = cl.get_scene_item_id(scene, tag_name(cam)).scene_item_id
+    except OBSSDKRequestError:
+        return
+    cl.set_scene_item_transform(scene, tag_id, tag_transform(box))
 
 
 def item_box(t):

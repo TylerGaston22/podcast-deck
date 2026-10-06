@@ -33,8 +33,11 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] Restart option off: leaving and returning to Video + Cams picks up mid-video. On: it starts over.
   - [ ] Video + Cams: cams sit beside the video box without covering it.
   - [ ] Screen map: dragging a camera moves it in OBS, the corner square resizes it, and Reset camera
-        puts it back.
-  - [ ] Re-running `build_scenes.py` keeps cameras where they were dragged.
+        puts it back. Its name tag moves with it.
+  - [ ] Closing and reopening the deck: cameras start on their default spots again.
+  - [ ] Settings: Save camera spots as default, then reopen the deck: they start there. Reset cameras
+        to default works. Show names on cams hides and shows the tags.
+  - [ ] Settings → Backgrounds: give a picture a layout; picking that picture switches to it.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
 

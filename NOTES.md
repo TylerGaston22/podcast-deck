@@ -48,9 +48,17 @@ Guests' decks notice it within about two seconds, with no restart.
 
 - The deck shows a small map of the screen with the current layout. Your camera is the bright box.
   Drag it to move it; drag the small square in its corner to resize it. OBS follows along live.
-- **Each spot is remembered per layout.** Moving yourself in Gameplay + Cams doesn't change Just Us.
-- **Reset camera** puts it back where the layout normally has it.
-- Moved spots survive restarting OBS and re-running `build_scenes.py`.
+- **Moves are for this session only, and per layout.** Moving yourself in Gameplay + Cams doesn't change
+  Just Us, and the next session starts from the defaults again.
+- **Defaults change only in Settings:** Save camera spots as default, or Reset cameras to default.
+- **Reset camera** puts one camera back on its default spot.
+- **Name tags** sit in each cam's corner and move with it. Settings turns them on or off for everyone.
+
+## Backgrounds and layouts
+
+Each saved background can have a default layout, set in Settings. Picking that background switches to
+that layout. Anything changed during a session after that (moving cams, another picture) stays for the
+session and doesn't change the defaults.
 
 ## Safety
 
@@ -71,8 +79,9 @@ Guests' decks notice it within about two seconds, with no restart.
 
 ## Where things are kept
 
-- **In the admin's OBS** (its profile's "persistent data"): moved camera spots, each layout's usual
-  spots (written by `build_scenes.py`, for Reset), and the full-control switch.
+- **In the admin's OBS** (its profile's "persistent data"): default camera spots saved in Settings,
+  each layout's own spots (written by `build_scenes.py`), the name tag switch, each background's layout,
+  and the full-control switch.
 - **On the admin's PC, next to the deck:** `guests.json` (the invites), `remote_cams.json` (guests'
   VDO.Ninja IDs), and `backgrounds/` (the pictures). All git-ignored.
 - **OBS's password** stays in OBS's own settings. The admin's deck reads it from there.

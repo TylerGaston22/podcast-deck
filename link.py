@@ -242,7 +242,7 @@ class LinkServer:
                 raise PermissionError("You can only move your own camera.")
             if action == "reset":
                 return local.reset(scene, cam)
-            return local.move(scene, cam, valid_box(args.get("box"), local.canvas), save=bool(args.get("save")))
+            return local.move(scene, cam, valid_box(args.get("box"), local.canvas))
 
         if action == "camera":                 # Start my camera: always their own camera only
             cam_id = args.get("id")

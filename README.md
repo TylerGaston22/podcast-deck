@@ -236,9 +236,16 @@ keeps playing silently and picks up wherever it has got to; on, it starts over e
 
 **The screen map** under the layout buttons shows where each camera sits in the current layout. Drag a
 camera to move it, or drag the small square in its corner to resize it. OBS follows along live, and the
-new spot is remembered for that layout only, so moving yourself in Gameplay + Cams doesn't change Just
-Us. **Reset camera** puts the selected camera back where the layout normally has it. On the admin deck
-you can drag anyone's camera; click one to select it. Guests can only drag their own.
+move only affects that layout and only lasts for this session: every session starts from the default
+spots. **Reset camera** puts the selected camera back on its default spot. On the admin deck you can drag
+anyone's camera; click one to select it. Guests can only drag their own.
+
+**Settings…** (admin) also has:
+- **Show names on cams**: a name tag in the corner of each cam, in every layout. It moves with the cam.
+- **Save camera spots as default** and **Reset cameras to default**: place the cameras how you like, then
+  save, and every session starts that way.
+- **Backgrounds**: pick a layout for each saved background. Choosing that background (from the menu,
+  `ctrl+alt+b`, or Paste link) switches to its layout too. New pictures appear in the list by themselves.
 
 **Guests get full control** (admin deck only) gives guests' decks everything the admin deck has:
 layouts, Record, Background ▾, Play link…, moving anyone's camera, and the hotkeys for all of them.
@@ -399,9 +406,9 @@ Start Tailscale on the admin PC, then reopen the deck. The deck won't accept gue
 Their camera has to be in the current layout. Without full control they can only drag their own.
 
 **Re-running `build_scenes.py` reset my layout tweaks**
-It rebuilds the seven layouts from config every time, but cameras moved from a deck are put back where
-they were dragged to. For other changes, edit `LAYOUTS` in `build_scenes.py`, or build your own scenes
-in OBS under different names. Those are never touched and still show up on the deck.
+It rebuilds the seven layouts from config every time, and cameras go back to their default spots
+(including ones saved in Settings). For other changes, edit `LAYOUTS` in `build_scenes.py`, or build your
+own scenes in OBS under different names. Those are never touched and still show up on the deck.
 
 ## Design decisions
 
@@ -471,11 +478,18 @@ Ideas welcome: open an issue.
 
 - Admin and guest decks: only the admin's deck touches OBS. Guests' decks send it requests over
   Tailscale with a personal invite, and it checks each one. Guests never get the OBS password.
-- Screen map on the deck for dragging and resizing cameras, remembered per layout and kept when
-  `build_scenes.py` runs again. Reset button returns a camera to its usual spot.
+- Screen map on the deck for dragging and resizing cameras. Moves last for the session; defaults are
+  saved from Settings. Reset button returns a camera to its default spot.
 - Admin switch that gives guests full control: layouts, recording, background, video links, and
   every camera.
 - `REMOTE_CAMS` for bringing in remote cameras with VDO.Ninja.
+
+**Name tags and defaults**
+
+- Name tags on cams, shown or hidden from Settings.
+- Camera moves last for the session only; Settings saves or resets the default spots.
+- Each saved background can switch to a layout of its own when it's picked.
+- Video + Cams now has the video on the right and the cams stacked down the left.
 
 **Background videos and what's on**
 

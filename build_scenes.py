@@ -72,6 +72,10 @@ def sources():
                                                          "reroute_audio": True})
         else:
             found[f"Cam - {name}"] = ("dshow_input", {})
+        # The name over each cam: white on a dark band. Shown or hidden from the deck's Settings.
+        found[f"Name - {name}"] = ("text_gdiplus", {"text": f" {name} ", "color": 0xFFFFFFFF,
+                                                    "bk_color": 0xFF1A1510, "bk_opacity": 80,
+                                                    "font": {"face": "Segoe UI", "size": 72, "style": "Bold"}})
     return found
 
 # ----------------------------------------------------------------------------
@@ -123,14 +127,18 @@ def backdrop():
 def with_discord(items):
     return items + ([full("Discord Voice")] if cfg.DISCORD_STREAMKIT_URL else [])
 
+def with_names(items):
+    """A name tag on every cam, above all the cams."""
+    return items + [(positions.tag_name(src), x, y, w, h) for src, x, y, w, h in items if src.startswith("Cam - ")]
+
 LAYOUTS = {
-    "Gameplay + Cams":  with_discord([full("Game")] + cams_bottom_right()),
-    "Browser + Cams":   with_discord([full("Browser Window")] + cams_bottom_right()),
-    "Just Us":          with_discord(backdrop() + cams_split()),
+    "Gameplay + Cams":  with_discord(with_names([full("Game")] + cams_bottom_right())),
+    "Browser + Cams":   with_discord(with_names([full("Browser Window")] + cams_bottom_right())),
+    "Just Us":          with_discord(with_names(backdrop() + cams_split())),
     "Gameplay Only":    [full("Game")],
-    "Desktop + Cams":   with_discord([full("Desktop")] + cams_bottom_right()),
+    "Desktop + Cams":   with_discord(with_names([full("Desktop")] + cams_bottom_right())),
     "Be Right Back":    backdrop() + [("BRB Text", 0, 0, W, H)],
-    "Video + Cams":     with_discord(backdrop() + [("Video Panel", *VIDEO_BOX)] + cams_column(VIDEO_BOX)),
+    "Video + Cams":     with_discord(with_names(backdrop() + [("Video Panel", *VIDEO_BOX)] + cams_column(VIDEO_BOX))),
 }
 
 
@@ -185,15 +193,19 @@ def build(cl, log=print, keep_scene=None):
     for page in ("Video Panel", "Background Video"):
         cl.set_input_settings(page, {k: SOURCES[page][1][k] for k in ("local_file", "width", "height")}, True)
 
-    # 2. Layout scenes, rebuilt from scratch.
+    # 2. Layout scenes, rebuilt from scratch. Name tags (items listed with their cam's box) sit in the
+    #    cam's bottom-left corner, shown or hidden as set in the deck's Settings.
     item_ids = {}
+    names_on = bool(positions.read(cl, positions.NAME_TAGS, True))
     for scene, items in LAYOUTS.items():
         if scene in scenes:
             cl.remove_scene(scene)
         cl.create_scene(scene)
         for src, x, y, bw, bh in items:
-            item_id = cl.create_scene_item(scene, src, True).scene_item_id
-            cl.set_scene_item_transform(scene, item_id, positions.box_transform(x, y, bw, bh, fill=src in FILL))
+            tag = src.startswith("Name - ")
+            item_id = cl.create_scene_item(scene, src, names_on if tag else True).scene_item_id
+            cl.set_scene_item_transform(scene, item_id, positions.tag_transform((x, y, bw, bh)) if tag
+                                        else positions.box_transform(x, y, bw, bh, fill=src in FILL))
             item_ids[scene, src] = item_id
         log(f"  built layout    {scene}")
 
@@ -207,6 +219,9 @@ def build(cl, log=print, keep_scene=None):
         for scene, box in positions.read(cl, positions.cam_slot(cam), {}).items():
             if (scene, cam) in item_ids:
                 cl.set_scene_item_transform(scene, item_ids[scene, cam], positions.box_transform(*box))
+                if (scene, positions.tag_name(cam)) in item_ids:
+                    cl.set_scene_item_transform(scene, item_ids[scene, positions.tag_name(cam)],
+                                                positions.tag_transform(box))
                 log(f"  kept moved cam  {cam} in {scene}")
 
     cl.set_current_program_scene(keep_scene if keep_scene in LAYOUTS else "Gameplay + Cams")

@@ -107,6 +107,8 @@ class Local:
                 self._build(cl)
                 self.note = "Layouts set up in OBS. Pick webcams any time in Settings."
                 scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes)]
+            else:
+                self._reset_all(cl)            # a new session starts from the default camera spots
         if self.rebuild_waiting and not recording:
             self.rebuild_waiting = False
             self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
@@ -176,29 +178,65 @@ class Local:
             if (scene, cam) not in self.ids:
                 self.ids[scene, cam] = cl.get_scene_item_id(scene, cam).scene_item_id
             try:
-                return cl.set_scene_item_transform(scene, self.ids[scene, cam], positions.box_transform(*box))
+                cl.set_scene_item_transform(scene, self.ids[scene, cam], positions.box_transform(*box))
+                return positions.place_tag(cl, scene, cam, box)
             except OBSSDKRequestError as e:
                 if e.code != 600 or attempt == 2:
                     raise
                 del self.ids[scene, cam]
 
     @_locked
-    def move(self, scene, cam, box, save=False):
-        cl = self.client()
-        self._place(cl, scene, cam, box)
-        if save:
-            positions.save(cl, cam, scene, box)
+    def move(self, scene, cam, box):
+        """Move a camera for this session only. Defaults change only from Settings."""
+        self._place(self.client(), scene, cam, box)
+
+    def _default(self, cl, scene, cam):
+        """A camera's default spot in a layout: the one saved in Settings, or the layout's own."""
+        return (positions.read(cl, positions.cam_slot(cam), {}).get(scene)
+                or positions.read(cl, positions.DEFAULTS, {}).get(scene, {}).get(cam))
 
     @_locked
     def reset(self, scene, cam):
-        """Put a camera back where the layout normally has it. False if the layout has no usual spot."""
+        """Put a camera back on its default spot. False if the layout has none."""
         cl = self.client()
-        box = positions.read(cl, positions.DEFAULTS, {}).get(scene, {}).get(cam)
+        box = self._default(cl, scene, cam)
         if box is None:
             return False
         self._place(cl, scene, cam, box)
-        positions.forget(cl, cam, scene)
         return True
+
+    def _reset_all(self, cl):
+        layouts = positions.read(cl, positions.DEFAULTS, {})
+        for scene, cams in layouts.items():
+            for cam in cams:
+                try:
+                    self._place(cl, scene, cam, self._default(cl, scene, cam))
+                except OBSSDKRequestError:
+                    pass                       # that layout or cam isn't in OBS any more
+
+    @_locked
+    def reset_all(self):
+        """Settings: every camera back on its default spot, in every layout."""
+        self._reset_all(self.client())
+
+    @_locked
+    def save_defaults(self):
+        """Settings: make every camera's current spot its default, in every layout."""
+        cl = self.client()
+        layouts = positions.read(cl, positions.DEFAULTS, {})
+        for scene, cams in layouts.items():
+            try:
+                found = {i["sourceName"]: positions.item_box(i["sceneItemTransform"])
+                         for i in cl.get_scene_item_list(scene).scene_items}
+            except OBSSDKRequestError:
+                continue
+            for cam, usual in cams.items():
+                if cam not in found:
+                    continue
+                if all(abs(a - b) < 1 for a, b in zip(found[cam], usual)):
+                    positions.forget(cl, cam, scene)   # back to the layout's own spot
+                else:
+                    positions.save(cl, cam, scene, found[cam])
 
     @_locked
     def devices(self):
@@ -218,6 +256,44 @@ class Local:
         current = cl.get_input_settings("Browser Window").input_settings.get("window", "")
         return {"cams": cams, "window": current,
                 "windows": [(i["itemName"], i["itemValue"]) for i in items if i["itemValue"]]}
+
+    @_locked
+    def options(self):
+        """For Settings: name tags on or off, saved backgrounds and the layout each one switches to."""
+        cl = self.client()
+        scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes) if s["sceneName"] not in HIDDEN]
+        return {"name_tags": bool(positions.read(cl, positions.NAME_TAGS, True)), "layouts": scenes,
+                "pictures": [os.path.basename(p) for p in media.list_backgrounds()],
+                "bg_layouts": positions.read(cl, positions.BG_LAYOUTS, {})}
+
+    @_locked
+    def set_name_tags(self, on):
+        """Show or hide every cam's name tag, in every layout."""
+        cl = self.client()
+        positions.write(cl, positions.NAME_TAGS, bool(on))
+        for s in cl.get_scene_list().scenes:
+            for i in cl.get_scene_item_list(s["sceneName"]).scene_items:
+                if i["sourceName"].startswith("Name - "):
+                    cl.set_scene_item_enabled(s["sceneName"], i["sceneItemId"], bool(on))
+
+    @_locked
+    def set_bg_layout(self, picture, layout):
+        """Make picking this background also switch to this layout ("" for no switch)."""
+        cl = self.client()
+        found = positions.read(cl, positions.BG_LAYOUTS, {})
+        if layout:
+            found[picture] = layout
+        else:
+            found.pop(picture, None)
+        positions.write(cl, positions.BG_LAYOUTS, found)
+
+    def _layout_for(self, cl, path):
+        """Switch to the layout that goes with this background, if it has one. Returns that layout or None."""
+        layout = positions.read(cl, positions.BG_LAYOUTS, {}).get(os.path.basename(path)) if path else None
+        if layout and layout in [s["sceneName"] for s in cl.get_scene_list().scenes]:
+            cl.set_current_program_scene(layout)
+            return layout
+        return None
 
     @_locked
     def set_webcam(self, name, device):
@@ -258,6 +334,7 @@ class Local:
         if self.bg_video:                      # a picture replaces a background video
             self.bg_video = None
             self._save_now(cl)
+        return self._layout_for(cl, path)
 
     def add_background_url(self, url):
         """Download a picture link into the backgrounds folder and show it. Not locked: downloads take a while."""
@@ -274,6 +351,7 @@ class Local:
         nxt = media.next_background(cl.get_input_settings("Background").input_settings.get("file", ""))
         if nxt:
             cl.set_input_settings("Background", {"file": nxt}, True)
+            self._layout_for(cl, nxt)
         return nxt
 
     @_locked
@@ -337,8 +415,8 @@ class Remote:
     def toggle_record(self):
         self._do("toggle_record")
 
-    def move(self, scene, cam, box, save=False):
-        self._do("move", scene=scene, cam=cam, box=list(box), save=save)
+    def move(self, scene, cam, box):
+        self._do("move", scene=scene, cam=cam, box=list(box))
 
     def reset(self, scene, cam):
         return self._do("reset", scene=scene, cam=cam)
@@ -348,7 +426,7 @@ class Remote:
         return current, pics
 
     def set_background(self, path):
-        self._do("set_background", path=path)
+        return self._do("set_background", path=path)
 
     def next_background(self):
         return self._do("next_background")

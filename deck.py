@@ -283,9 +283,33 @@ class Deck:
             cams = tk.Frame(win, bg=BG)
             cams.pack(fill="x")
             self.call(lambda b: b.devices(), then=lambda found: self.fill_devices(cams, found))
+            names = tk.BooleanVar(value=True)
+            tags = tk.Checkbutton(win, text="Show names on cams", variable=names, anchor="w", bg=BG, fg=INK_DIM,
+                                  selectcolor=KEY, activebackground=BG, activeforeground=INK, font=STATUS_FONT,
+                                  command=lambda: self.call(lambda b: b.set_name_tags(names.get()), then=lambda _: self.say(
+                                      "Names shown on cams" if names.get() else "Names hidden")))
+            tags.pack(fill="x", pady=(4, 0))
+
+            heading("Default camera spots")
+            note("Moving a camera on the map only lasts for this session; each session starts from the "
+                 "defaults. To change the defaults, place the cameras where you want them, then save.")
+            row = tk.Frame(win, bg=BG)
+            row.pack(fill="x", pady=(4, 0))
+            self.small_key(row, "Save camera spots as default", lambda: self.call(
+                lambda b: b.save_defaults(), then=lambda _: self.say("Camera spots saved as default"))).pack(side="left")
+            self.small_key(row, "Reset cameras to default", lambda: self.call(
+                lambda b: b.reset_all(), then=lambda _: self.say("Cameras back on their default spots"))).pack(
+                side="left", padx=6)
+
+            heading("Backgrounds")
+            note("Picking a background also switches to the layout you choose for it here. New pictures show up "
+                 "in this list by themselves.")
+            pics = tk.Frame(win, bg=BG)
+            pics.pack(fill="x", pady=(4, 0))
+            self.call(lambda b: b.options(), then=lambda found: self.fill_options(pics, names, found))
 
             heading("Layouts")
-            note("Rebuild after changing config.py. Cameras you've moved stay where they are.")
+            note("Rebuild after changing config.py. Cameras go back to their default spots.")
             self.small_key(win, "Rebuild layouts", lambda: self.call(
                 lambda b: b.rebuild(), then=lambda _: self.say("Layouts rebuilt"))).pack(anchor="w", pady=(4, 0))
 
@@ -328,6 +352,24 @@ class Deck:
             r += 1
         row(r, "Browser window", found["windows"], found["window"],
             lambda v: self.call(lambda b: b.set_window(v), then=lambda _: self.say("Browser window set")))
+
+    def fill_options(self, frame, names, found):
+        """Settings: the name tag switch, and a layout dropdown for each saved background."""
+        names.set(found["name_tags"])
+        if not found["pictures"]:
+            tk.Label(frame, text="No saved backgrounds yet. Add one with Background ▾ or Paste link.", bg=BG,
+                     fg=INK_DIM, font=STATUS_FONT, anchor="w").grid(row=0, column=0, sticky="w")
+            return
+        choices = ["No change"] + found["layouts"]
+        for r, pic in enumerate(found["pictures"]):
+            tk.Label(frame, text=os.path.splitext(pic)[0][:28], bg=BG, fg=INK, font=STATUS_FONT, anchor="w").grid(
+                row=r, column=0, sticky="w")
+            box = ttk.Combobox(frame, values=choices, state="readonly", width=28)
+            box.set(found["bg_layouts"].get(pic) or "No change")
+            box.bind("<<ComboboxSelected>>", lambda _e, p=pic, b=box: self.call(
+                lambda be: be.set_bg_layout(p, "" if b.get() == "No change" else b.get()),
+                then=lambda _: self.say("Saved")))
+            box.grid(row=r, column=1, padx=8, pady=2, sticky="w")
 
     def fill_guests(self, rows, on):
         for w in rows.winfo_children():
@@ -467,12 +509,12 @@ class Deck:
         if not d or d["item"]["box"] == d["box"]:
             return
         name, scene, box = d["item"]["name"], d["scene"], d["item"]["box"]
-        self.push(scene, name, box, save=True)
-        self.say(f"{'Your camera' if name == self.me else name.removeprefix('Cam - ')} moved in {scene}")
+        self.push(scene, name, box)
+        self.say(f"{'Your camera' if name == self.me else name.removeprefix('Cam - ')} moved for this session")
 
-    def push(self, scene, cam, box, save=False):
+    def push(self, scene, cam, box):
         """Send a camera's new spot, dropping in-between spots if the other end is slower than the mouse."""
-        self.pending = lambda: self.backend.move(scene, cam, box, save=save)
+        self.pending = lambda: self.backend.move(scene, cam, box)
         self.hold_until = time.monotonic() + 1.5
         if not self.sending:
             self.send_next()
@@ -499,7 +541,7 @@ class Deck:
             self.say(f"{cam.removeprefix('Cam - ')} isn't in this layout.")
             return
         self.call(lambda b: b.reset(scene, cam), then=lambda ok: self.say(
-            "Camera back to its usual spot" if ok
+            "Camera back on its default spot" if ok
             else "This layout has no usual spot for that camera. Run build_scenes.py to set one."))
 
     # --- Background --------------------------------------------------------
@@ -529,7 +571,8 @@ class Deck:
 
     def set_background(self, path):
         name = os.path.splitext(os.path.basename(path))[0] if path else "plain color"
-        self.call(lambda b: b.set_background(path), then=lambda _: self.say(f"Background: {name}"))
+        self.call(lambda b: b.set_background(path), then=lambda layout: self.say(
+            f"Background: {name}" + (f"  ·  switched to {layout}" if layout else "")))
 
     def add_background(self):
         path = filedialog.askopenfilename(
