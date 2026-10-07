@@ -28,6 +28,7 @@ ADMIN = True
 ME = ""
 INVITE = ""
 CAMERA_ID = ""     # guest: your private VDO.Ninja ID, made by Start my camera
+DISPLAY_NAME = ""  # guest: the name shown on your camera. Change it in the deck's Settings
 DECK_PORT = 4460   # admin: where guests' decks connect, over Tailscale only
 
 # Discord StreamKit "Voice Widget" URL — shows everyone's Discord icon and lights

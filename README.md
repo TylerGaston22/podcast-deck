@@ -273,6 +273,9 @@ one before doing anything. Guests never get OBS or its password. Exact steps are
   private VDO.Ninja link that sends their camera and mic, and the admin's deck adds it to their `Cam - …`
   source by itself. If the admin is recording at that moment, it's added as soon as the recording stops,
   so nothing changes mid-episode.
+- **Display names:** a guest types the name to show on their camera when they join, and can change it
+  any time in **Settings…** → **You**. It shows on their name tag, everyone's screen map, and their title
+  bar. Their invite still decides which camera is theirs, so a name can't take over someone else's camera.
 - **People in the same room sharing one camera** share one name and can use the same invite.
 - **Optional, for extra safety:** in Tailscale's access rules, let shared guests reach only the deck's
   port (`4460`) on the admin PC.
@@ -301,6 +304,7 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 | `ME` | `""` | Admin only, optional: your cam name, so the screen map selects it first |
 | `INVITE` | `""` | Guests only: the invite the admin sent you. Filled in on first launch |
 | `CAMERA_ID` | `""` | Guests only: your private VDO.Ninja ID, made by **Start my camera** |
+| `DISPLAY_NAME` | `""` | Guests only: the name shown on your camera. Set when joining, changed in Settings |
 | `DECK_PORT` | `4460` | Admin only: the port guests' decks connect to, over Tailscale only |
 | `MOUSE_BUTTONS` | back → next, forward → record | Keys: `"x"` (back), `"x2"` (forward), `"middle"`. Values: a scene name, `"next"`, `"record"`, or `"next background"`. `{}` turns it off |
 
@@ -383,11 +387,11 @@ Replace their `Cam - …` source with a Window Capture of the Discord call windo
 StreamKit's video widget as a Browser source.
 
 **"OBS doesn't have the new sources yet"**
-Click **Settings…** → **Rebuild layouts**. It leaves your existing sources and their settings alone.
+Click **Settings…** → **Cameras** → **Rebuild layouts**. It leaves your existing sources and their settings alone.
 
 **A pasted background video doesn't show in OBS**
 The admin's deck has to be open, since OBS gets the background video from it. If you set up OBS before
-background videos existed, click **Settings…** → **Rebuild layouts** once to add the Background Video
+background videos existed, click **Settings…** → **Cameras** → **Rebuild layouts** once to add the Background Video
 source.
 
 **"This video can't be played here"**
@@ -400,7 +404,7 @@ and that the admin's deck is open. The first time, Windows Firewall on the admin
 Python can accept connections; allow it on private networks.
 
 **A guest's deck says "The admin hasn't invited you"**
-Their invite was replaced or removed. The admin clicks **Settings…** → **Copy invite** and sends a new one.
+Their invite was replaced or removed. The admin clicks **Settings…** → **Guests** → **Copy invite** and sends a new one.
 
 **The Guests window says Tailscale isn't running**
 Start Tailscale on the admin PC, then reopen the deck. The deck won't accept guests any other way.
@@ -494,6 +498,7 @@ Ideas welcome: open an issue.
 - Each layout can have a default background and extra ones, set in Settings → Backgrounds, with your
   own uploaded pictures. Switching to a layout puts up its default.
 - Settings is split into tabs: Cameras, Backgrounds, Guests, Help.
+- Guests choose the name shown on their camera, and can change it in Settings → You.
 - Video + Cams now has the video on the right and the cams stacked down the left.
 
 **Background videos and what's on**

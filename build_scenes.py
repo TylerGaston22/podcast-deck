@@ -197,6 +197,9 @@ def build(cl, log=print, keep_scene=None):
     #    cam's bottom-left corner, shown or hidden as set in the deck's Settings.
     item_ids = {}
     names_on = bool(positions.read(cl, positions.NAME_TAGS, True))
+    for name, shown in positions.read(cl, positions.DISPLAY_NAMES, {}).items():   # names guests chose
+        if name in cfg.CAMS and shown:
+            cl.set_input_settings(f"Name - {name}", {"text": f" {shown} "}, True)
     for scene, items in LAYOUTS.items():
         if scene in scenes:
             cl.remove_scene(scene)

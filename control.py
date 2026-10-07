@@ -22,7 +22,7 @@ import obsconfig
 import positions
 
 HIDDEN = {"_Sources (don't delete)"}
-NOT_BUILT = "OBS doesn't have the new sources yet. Click Settings → Rebuild layouts to add them."
+NOT_BUILT = "OBS doesn't have the new sources yet. Click Settings → Cameras → Rebuild layouts to add them."
 OBS_CLOSED = "OBS not reachable. Open OBS; this window connects by itself."
 NOW_SLOT = "podcast_deck.now"                  # {"bg": live background video, "video": Video + Cams title}
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
@@ -127,7 +127,7 @@ class Local:
         note, self.note = self.note, None
         return {"scenes": [s for s in scenes if s not in HIDDEN], "current": current,
                 "recording": recording, "full": self._full(cl), "items": items, "canvas": list(self.canvas),
-                "note": note, "now": self._now(cl)}
+                "note": note, "now": self._now(cl), "names": positions.read(cl, positions.DISPLAY_NAMES, {})}
 
     def _now(self, cl):
         """What's showing: the background (video title or picture name) and the Video + Cams video."""
@@ -354,6 +354,23 @@ class Local:
                     cl.set_scene_item_enabled(s["sceneName"], i["sceneItemId"], bool(on))
 
     @_locked
+    def set_display_name(self, name, shown):
+        """The name shown on a cam (its tag, the screen maps). Empty goes back to the cam's own name."""
+        cl = self.client()
+        shown = positions.clean_display_name(shown)
+        found = positions.read(cl, positions.DISPLAY_NAMES, {})
+        if shown and shown != name:
+            found[name] = shown
+        else:
+            found.pop(name, None)
+        positions.write(cl, positions.DISPLAY_NAMES, found)
+        try:
+            cl.set_input_settings(f"Name - {name}", {"text": f" {shown or name} "}, True)
+        except OBSSDKRequestError:
+            pass                               # layouts built before name tags: Rebuild layouts adds them
+        return shown or name
+
+    @_locked
     def set_webcam(self, name, device):
         self.client().set_input_settings(f"Cam - {name}", {"video_device_id": device}, True)
 
@@ -519,6 +536,9 @@ class Remote:
 
     def camera(self, cam_id):
         return self._do("camera", id=cam_id)
+
+    def set_display_name(self, shown):
+        return self._do("display_name", name=shown)
 
 
 def valid_box(box, canvas):

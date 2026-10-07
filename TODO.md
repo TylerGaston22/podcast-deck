@@ -49,8 +49,10 @@ Needs at least one other person on another PC.
 
 - [ ] Install Tailscale on both PCs and share the admin PC with the guest.
 - [ ] Guest runs Install.bat on a fresh PC with no Python: it installs Python and opens the deck.
-- [ ] Admin: Settings… → Copy invite, send it. Guest clicks I'm joining → Join. It connects and the
+- [ ] Admin: Settings… → Guests → Copy invite, send it. Guest clicks I'm joining → Join. It connects and the
       title bar shows their name.
+- [ ] Guest's display name (typed when joining) shows on their name tag and on both screen maps.
+      Changing it in Settings → You updates it.
 - [ ] Guest clicks Start my camera: VDO.Ninja opens, and their camera shows up in the show (after the
       recording, if one is running).
 - [ ] Guest drags and resizes their camera; it moves in OBS within a moment. They can't grab anyone
@@ -58,7 +60,7 @@ Needs at least one other person on another PC.
 - [ ] The guest's layout buttons are greyed out, and Record, Background, and Play link are hidden,
       until the admin ticks "Guests get full control". Then they all work.
 - [ ] Unticking it takes the controls away again within a couple of seconds.
-- [ ] Settings… → Remove: the guest's deck stops working right away.
+- [ ] Settings… → Guests → Remove: the guest's deck stops working right away.
 - [ ] Two people dragging at the same time don't undo each other's moves.
 - [ ] Note in the README how laggy it feels over the internet, and anything else surprising.
 

@@ -73,6 +73,7 @@ class Deck:
         self.selected = self.me
         self.drag, self.pending, self.sending = None, None, False
         self.hold_until = 0.0                  # keep the map as dragged until OBS has caught up
+        self.names, self.sent_name = {}, False  # display names guests chose, by cam name
         self.now = {}                          # what's showing: background and video titles
         self.bg_preview, self.bg_mine = None, False   # the pasted background video, and whether it's live
         self.bg = bgcontrol.BgControl(self, ADMIN)    # this PC only: the browser control page, and OBS's feed
@@ -345,10 +346,21 @@ class Deck:
             rows.pack(fill="x", pady=(4, 0))
             self.fill_guests(rows, on)
         else:
-            invite_page = page("Invite")
-            heading(invite_page, "Invite", first=True)
-            note(invite_page, "Copy the new invite the admin sent you, then click Paste invite.")
-            self.small_key(invite_page, "Paste invite", lambda: self.paste_invite(win)).pack(anchor="w", pady=(4, 0))
+            you_page = page("You")
+            heading(you_page, "Your name", first=True)
+            note(you_page, "Shown on your camera and on everyone's screen map.")
+            row = tk.Frame(you_page, bg=BG)
+            row.pack(fill="x", pady=(4, 0))
+            name_box = tk.Entry(row, width=28, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+            name_box.insert(0, getattr(cfg, "DISPLAY_NAME", "") or (self.me or "").removeprefix("Cam - "))
+            name_box.pack(side="left", ipady=5)
+            save = lambda _e=None: self.set_display_name(name_box.get())
+            name_box.bind("<Return>", save)
+            self.small_key(row, "Save", save).pack(side="left", padx=6)
+
+            heading(you_page, "Invite")
+            note(you_page, "Got a new invite from the admin? Copy it, then click Paste invite.")
+            self.small_key(you_page, "Paste invite", lambda: self.paste_invite(win)).pack(anchor="w", pady=(4, 0))
 
         help_page = page("Help")
         heading(help_page, "Help", first=True)
@@ -441,7 +453,9 @@ class Deck:
             w.destroy()
         invites = link.load_invites()
         for r, name in enumerate(n for n in cfg.CAMS if f"Cam - {n}" != self.me):
-            tk.Label(rows, text=name, bg=BG, fg=INK, font=STATUS_FONT, anchor="w").grid(row=r, column=0, sticky="w")
+            shown = self.names.get(name)
+            tk.Label(rows, text=f"{name} · {shown}" if shown else name, bg=BG, fg=INK, font=STATUS_FONT,
+                     anchor="w").grid(row=r, column=0, sticky="w")
             tk.Label(rows, text="invited" if name in invites else "not invited", bg=BG, fg=INK_DIM,
                      font=STATUS_FONT).grid(row=r, column=1, padx=10)
             copy = self.small_key(rows, "Copy invite", lambda n=name: self.copy_invite(rows, on, n, fresh=False))
@@ -482,6 +496,16 @@ class Deck:
         self.say("Invite saved. Connecting…")
         if win:
             win.destroy()
+
+    def set_display_name(self, text):
+        """Guest: the name shown on your camera. Saved here and sent to the admin's deck."""
+        shown = positions.clean_display_name(text)
+        configfile.update(DISPLAY_NAME=shown)
+        cfg.DISPLAY_NAME = shown
+        if self.backend is None:
+            self.say("Name saved. It's sent when your deck connects.")
+            return
+        self.call(lambda b: b.set_display_name(shown), then=lambda now: self.say(f"Your camera now shows: {now}"))
 
     # --- Camera (guest) ----------------------------------------------------
     def start_camera(self):
@@ -529,7 +553,8 @@ class Deck:
             mine = name == self.selected
             c.create_rectangle(x, y, x + w, y + h, fill=LIT if mine else KEY_HOVER,
                                outline=LIT if mine else (INK if self.movable(name) else INK_DIM))
-            c.create_text(x + w / 2, y + h / 2, text=name.removeprefix("Cam - "), width=max(w - 4, 10),
+            base = name.removeprefix("Cam - ")
+            c.create_text(x + w / 2, y + h / 2, text=self.names.get(base) or base, width=max(w - 4, 10),
                           fill=LIT_INK if mine else (INK if self.movable(name) else INK_DIM), font=STATUS_FONT)
             if mine and self.movable(name):
                 c.create_rectangle(x + w - 6, y + h - 6, x + w, y + h, fill=LIT_INK, outline=LIT_INK)
@@ -912,9 +937,16 @@ class Deck:
         if not ADMIN:
             you = state.get("you")
             self.me = f"Cam - {you}" if you else None
-            self.root.title(f"Deck · {you}" if you else "Deck · guest")
             if self.selected is None:
                 self.selected = self.me
+            mine = getattr(cfg, "DISPLAY_NAME", "")
+            if you and mine and not self.sent_name:    # tell the admin's deck our name once per session
+                self.sent_name = True
+                self.call(lambda b: b.set_display_name(mine))
+        self.names = state.get("names") or {}
+        if not ADMIN:
+            you = state.get("you")
+            self.root.title(f"Deck · {self.names.get(you) or you}" if you else "Deck · guest")
         if state.get("note"):
             self.say(state["note"], seconds=10)
         now = state.get("now") or {}
@@ -992,7 +1024,7 @@ def welcome(root):
     root.title("Podcast Deck")
     root.configure(bg=BG)
     root.attributes("-topmost", True)
-    root.geometry("420x330")
+    root.geometry("420x380")
     frame = tk.Frame(root, bg=BG, padx=20, pady=18)
     frame.pack(fill="both", expand=True)
     key = lambda parent, text, cmd: Deck.key(None, parent, text, cmd)   # the deck's button style, no deck yet
@@ -1048,6 +1080,9 @@ def welcome(root):
         except tk.TclError:
             clip = ""
         invite = entry(clip if clip.startswith(link.PREFIX) else "")
+        label("Your name, shown on your camera (you can change it later in Settings):")
+        shown = entry(os.environ.get("USERNAME", ""))
+        invite.focus_set()
         problem = tk.Label(frame, text="", bg=BG, fg=REC, font=STATUS_FONT, anchor="w", wraplength=370,
                            justify="left")
         problem.pack(fill="x")
@@ -1057,7 +1092,7 @@ def welcome(root):
             if not text.startswith(link.PREFIX):
                 problem.config(text="That doesn't look like an invite. It starts with podcast-deck://")
                 return
-            done(ADMIN=False, INVITE=text)
+            done(ADMIN=False, INVITE=text, DISPLAY_NAME=positions.clean_display_name(shown.get()))
         key(frame, "Join", go).pack(anchor="e", pady=(8, 0))
         root.bind("<Return>", go)
 

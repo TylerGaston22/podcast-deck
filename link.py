@@ -244,6 +244,8 @@ class LinkServer:
                 return local.reset(scene, cam)
             return local.move(scene, cam, valid_box(args.get("box"), local.canvas))
 
+        if action == "display_name":           # the name on their own camera only
+            return local.set_display_name(name, args.get("name"))
         if action == "camera":                 # Start my camera: always their own camera only
             cam_id = args.get("id")
             if not (isinstance(cam_id, str) and _CAMERA_ID.fullmatch(cam_id)):

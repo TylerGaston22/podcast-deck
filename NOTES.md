@@ -22,6 +22,8 @@ How the deck works when hosts join from different places. Setup steps are in the
 - **Admin:** `ADMIN = True` in `config.py`. `ME` is optional (your camera, selected first on the map).
 - **Guest:** `ADMIN = False` and `INVITE = "…"`, the invite the admin sent them. The first-launch
   window writes both, so nobody edits `config.py` by hand.
+- **Display names are up to each guest.** They type one when joining and can change it in Settings →
+  You. It's what shows on their camera; the invite still decides which camera is theirs.
 - **Invites say who you are.** The admin makes one per camera name in **Settings…**, so the invite for
   Host 2 can only ever act as Host 2. **New** replaces an invite and **Remove** cuts that person off.
 - **Camera names aren't people.** Two people sharing one camera in the same room share one name, like

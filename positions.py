@@ -8,6 +8,7 @@ REALM = "OBS_WEBSOCKET_DATA_REALM_PROFILE"
 GUESTS_FULL_CONTROL = "podcast_deck.guests_full_control"   # True: guests get every admin control
 DEFAULTS = "podcast_deck.default_positions"     # {layout: {cam source: box}}, written by build_scenes.py
 NAME_TAGS = "podcast_deck.name_tags"            # show names on cams (default on)
+DISPLAY_NAMES = "podcast_deck.display_names"    # {cam name: the name its guest chose to show}
 LAYOUT_BGS = "podcast_deck.layout_backgrounds"  # {layout: {"default": picture file name, "extras": [file names]}}
 
 
@@ -48,6 +49,13 @@ def box_transform(x, y, w, h, fill=False, align=0):
         "boundsAlignment": align,
         "boundsWidth": w, "boundsHeight": h,
     }
+
+
+def clean_display_name(text):
+    """A display name from a guest, made safe to show: printable, one line, at most 32 characters."""
+    if not isinstance(text, str):
+        return ""
+    return " ".join("".join(ch if ch.isprintable() else " " for ch in text).split())[:32]
 
 
 def tag_name(cam):
