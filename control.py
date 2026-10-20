@@ -69,6 +69,7 @@ class Local:
         self.rebuild_waiting = False           # a guest's camera arrived mid-recording; rebuild after
         self.note = None                       # something the window should mention once
         self.last_scene = None                 # switching to a layout puts up its default background
+        self.webcam_tries = 15                 # polls left to give webcams without a device one (about 30 s)
         self.bg_video = None                   # the live background video, read by OBS's Background Video page
         self.video_title = None                # what's in the Video + Cams box
         self.now_loaded = False                # both are kept in OBS, so they survive restarts
@@ -91,6 +92,27 @@ class Local:
         build_scenes.build(cl, log=lambda _line: None, keep_scene=keep_scene)
         self.ids.clear()
 
+    def _pick_webcams(self, cl):
+        """Give every webcam source with no device picked yet the next unused camera. True when none are left
+        without one (or there's nothing to pick from)."""
+        import build_scenes
+        cams = []
+        for name in self.cfg.CAMS:
+            try:
+                found = cl.get_input_settings(f"Cam - {name}")
+            except OBSSDKRequestError:
+                continue
+            if found.input_kind.startswith("dshow_input"):
+                cams.append(f"Cam - {name}")
+        before = {c: cl.get_input_settings(c).input_settings.get("video_device_id") for c in cams}
+        if all(before.values()):
+            return True
+        picked = []
+        build_scenes.assign_webcams(cl, cams, log=picked.append)
+        if picked:
+            self.note = "Webcam picked: " + picked[0].split("picked webcam", 1)[-1].strip().split(" for ")[0]
+        return all(cl.get_input_settings(c).input_settings.get("video_device_id") for c in cams)
+
     @_locked
     def rebuild(self):
         """Settings → Rebuild layouts."""
@@ -110,6 +132,10 @@ class Local:
                 scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes)]
             else:
                 self._reset_all(cl)            # a new session starts from the default camera spots
+        if self.webcam_tries > 0:              # OBS can take a moment to list webcams after making a source
+            self.webcam_tries -= 1
+            if self._pick_webcams(cl):
+                self.webcam_tries = 0
         if self.rebuild_waiting and not recording:
             self.rebuild_waiting = False
             self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
@@ -372,7 +398,10 @@ class Local:
 
     @_locked
     def set_webcam(self, name, device):
-        self.client().set_input_settings(f"Cam - {name}", {"video_device_id": device}, True)
+        import build_scenes
+        cl = self.client()
+        cl.set_input_settings(f"Cam - {name}", {"video_device_id": device}, True)
+        build_scenes.widescreen(cl, f"Cam - {name}")
 
     @_locked
     def set_window(self, window):

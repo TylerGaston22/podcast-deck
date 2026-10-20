@@ -22,38 +22,43 @@ cfg = configfile.load()
 if cfg is None:
     sys.exit("No config.py yet. Open the deck once (Podcast Deck on your desktop) and it sets one up.")
 
-W, H = cfg.CANVAS_W, cfg.CANVAS_H
 LIB = "_Sources (don't delete)"   # holds every input once; layouts just reference them
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# Video + Cams box. Older config.py files without these get the defaults.
-VIDEO_BOX = (getattr(cfg, "VIDEO_X", 432), getattr(cfg, "VIDEO_Y", 135),
-             getattr(cfg, "VIDEO_W", 1440), getattr(cfg, "VIDEO_H", 810))
+# Sizes in config.py (cams, margins, the video box) are for a 1920x1080 canvas. The layouts are
+# built for OBS's real canvas (Settings → Video → Base Resolution), so they scale by S = width / 1920.
+W = H = S = VIDEO_BOX = BASE_SOURCES = LAYOUTS = None   # set by set_canvas()
 
-# ----------------------------------------------------------------------------
-# Sources. Input kinds are Windows names; the script picks the installed
-# version of each kind (e.g. text_gdiplus_v2 vs _v3) at runtime.
-# ----------------------------------------------------------------------------
-BASE_SOURCES = {
-    "Game":          ("game_capture",    {"capture_mode": "any_fullscreen"}),
-    "Desktop":       ("monitor_capture", {}),
-    "Browser Window":("window_capture",  {}),
-    "Backdrop":      ("color_source",    {"color": 0xFF1B1F2A, "width": W, "height": H}),
-    # Picked from the deck's Background menu. Empty until then, so Backdrop shows through.
-    "Background":    ("image_source",    {"file": ""}),
-    # A video background: bg_player.html follows the browser control page (deck's Paste link). Transparent
-    # when there's no background video, so the picture underneath shows.
-    "Background Video": ("browser_source", {"is_local_file": True, "local_file": os.path.join(HERE, "bg_player.html"),
-                                            "width": W, "height": H, "reroute_audio": True, "shutdown": False}),
-    # player.html plays whatever YouTube link the deck's "Play link…" box was given.
-    # reroute_audio = "Control audio via OBS", so the video's sound is recorded.
-    "Video Panel":   ("browser_source",  {"is_local_file": True, "local_file": os.path.join(HERE, "player.html"),
-                                          "width": VIDEO_BOX[2], "height": VIDEO_BOX[3],
-                                          "reroute_audio": True, "shutdown": False}),
-    "BRB Text":      ("text_gdiplus",    {"text": "Be right back", "font": {"face": "Segoe UI", "size": 120, "style": "Bold"}}),
-}
-if cfg.DISCORD_STREAMKIT_URL:
-    BASE_SOURCES["Discord Voice"] = ("browser_source", {"url": cfg.DISCORD_STREAMKIT_URL, "width": W, "height": H})
+
+def px(v):
+    """A 1920x1080 size from config.py, scaled to the real canvas."""
+    return round(v * S)
+
+
+def base_sources():
+    """The sources every layout draws from, sized for the canvas. Input kinds are Windows names; the
+    build picks the installed version of each kind (e.g. text_gdiplus_v2 vs _v3) at runtime."""
+    found = {
+        "Game":          ("game_capture",    {"capture_mode": "any_fullscreen"}),
+        "Desktop":       ("monitor_capture", {}),
+        "Browser Window":("window_capture",  {}),
+        "Backdrop":      ("color_source",    {"color": 0xFF1B1F2A, "width": W, "height": H}),
+        # Picked from the deck's Background menu. Empty until then, so Backdrop shows through.
+        "Background":    ("image_source",    {"file": ""}),
+        # A video background: bg_player.html follows the browser control page (deck's Paste link). Transparent
+        # when there's no background video, so the picture underneath shows.
+        "Background Video": ("browser_source", {"is_local_file": True, "local_file": os.path.join(HERE, "bg_player.html"),
+                                                "width": W, "height": H, "reroute_audio": True, "shutdown": False}),
+        # player.html plays whatever YouTube link the deck's "Play link…" box was given.
+        # reroute_audio = "Control audio via OBS", so the video's sound is recorded.
+        "Video Panel":   ("browser_source",  {"is_local_file": True, "local_file": os.path.join(HERE, "player.html"),
+                                              "width": VIDEO_BOX[2], "height": VIDEO_BOX[3],
+                                              "reroute_audio": True, "shutdown": False}),
+        "BRB Text":      ("text_gdiplus",    {"text": "Be right back", "font": {"face": "Segoe UI", "size": 120, "style": "Bold"}}),
+    }
+    if cfg.DISCORD_STREAMKIT_URL:
+        found["Discord Voice"] = ("browser_source", {"url": cfg.DISCORD_STREAMKIT_URL, "width": W, "height": H})
+    return found
 
 
 def remote_cams():
@@ -91,7 +96,7 @@ def full(src):
 def cams_bottom_right():
     """Small cams in a row hugging the bottom-right corner."""
     n = len(cfg.CAMS)
-    cw, ch, m = cfg.SMALL_CAM_W, cfg.SMALL_CAM_H, cfg.MARGIN
+    cw, ch, m = px(cfg.SMALL_CAM_W), px(cfg.SMALL_CAM_H), px(cfg.MARGIN)
     y = H - ch - m
     x0 = W - m - n * cw - (n - 1) * m
     return [(f"Cam - {name}", x0 + i * (cw + m), y, cw, ch) for i, name in enumerate(cfg.CAMS)]
@@ -99,7 +104,7 @@ def cams_bottom_right():
 def cams_split():
     """Everyone equal size across the screen, vertically centered."""
     n = len(cfg.CAMS)
-    m = cfg.MARGIN
+    m = px(cfg.MARGIN)
     cw = (W - (n + 1) * m) // n
     ch = int(cw * 9 / 16)
     y = (H - ch) // 2
@@ -108,10 +113,10 @@ def cams_split():
 def cams_column(box):
     """Cams stacked in a column on whichever side of `box` has more room, never overlapping it."""
     x, y, bw, bh = box
-    n, m = len(cfg.CAMS), cfg.MARGIN
+    n, m = len(cfg.CAMS), px(cfg.MARGIN)
     left, right = x - 2 * m, W - (x + bw) - 2 * m
     col_w = max(left, right)
-    if col_w < 160:
+    if col_w < px(160):
         sys.exit(f"The video box ({bw}x{bh} at {x},{y}) leaves no room for the cams beside it. "
                  f"Make VIDEO_W smaller or move VIDEO_X in config.py.")
     ch = min(col_w * 9 // 16, (H - (n + 1) * m) // n)
@@ -131,15 +136,26 @@ def with_names(items):
     """A name tag on every cam, above all the cams."""
     return items + [(positions.tag_name(src), x, y, w, h) for src, x, y, w, h in items if src.startswith("Cam - ")]
 
-LAYOUTS = {
-    "Gameplay + Cams":  with_discord(with_names([full("Game")] + cams_bottom_right())),
-    "Browser + Cams":   with_discord(with_names([full("Browser Window")] + cams_bottom_right())),
-    "Just Us":          with_discord(with_names(backdrop() + cams_split())),
-    "Gameplay Only":    [full("Game")],
-    "Desktop + Cams":   with_discord(with_names([full("Desktop")] + cams_bottom_right())),
-    "Be Right Back":    backdrop() + [("BRB Text", 0, 0, W, H)],
-    "Video + Cams":     with_discord(with_names(backdrop() + [("Video Panel", *VIDEO_BOX)] + cams_column(VIDEO_BOX))),
-}
+def set_canvas(w, h):
+    """Lay everything out for a canvas of w x h."""
+    global W, H, S, VIDEO_BOX, BASE_SOURCES, LAYOUTS
+    W, H, S = w, h, w / 1920
+    # Video + Cams box. Older config.py files without these get the defaults.
+    VIDEO_BOX = tuple(px(v) for v in (getattr(cfg, "VIDEO_X", 432), getattr(cfg, "VIDEO_Y", 135),
+                                      getattr(cfg, "VIDEO_W", 1440), getattr(cfg, "VIDEO_H", 810)))
+    BASE_SOURCES = base_sources()
+    LAYOUTS = {
+        "Gameplay + Cams":  with_discord(with_names([full("Game")] + cams_bottom_right())),
+        "Browser + Cams":   with_discord(with_names([full("Browser Window")] + cams_bottom_right())),
+        "Just Us":          with_discord(with_names(backdrop() + cams_split())),
+        "Gameplay Only":    [full("Game")],
+        "Desktop + Cams":   with_discord(with_names([full("Desktop")] + cams_bottom_right())),
+        "Be Right Back":    backdrop() + [("BRB Text", 0, 0, W, H)],
+        "Video + Cams":     with_discord(with_names(backdrop() + [("Video Panel", *VIDEO_BOX)] + cams_column(VIDEO_BOX))),
+    }
+
+
+set_canvas(cfg.CANVAS_W, cfg.CANVAS_H)
 
 
 def main():
@@ -153,6 +169,8 @@ def main():
 
 def build(cl, log=print, keep_scene=None):
     """Create the sources and layouts in OBS. keep_scene: stay on this layout afterwards if it still exists."""
+    video = cl.get_video_settings()
+    set_canvas(video.base_width, video.base_height)
     SOURCES = sources()
     installed_kinds = cl.get_input_kind_list(False).input_kinds
     def resolve(kind):
@@ -247,7 +265,29 @@ def assign_webcams(cl, cams, log=print):
         if not picked[cam] and free:
             name, value = free.pop(0)
             cl.set_input_settings(cam, {"video_device_id": value}, True)
+            widescreen(cl, cam)
             log(f"  picked webcam   {name} for {cam}")
+
+
+def widescreen(cl, cam):
+    """Set a webcam to its sharpest 16:9 resolution, up to 1920x1080, so it fills its widescreen box
+    instead of showing gaps at the sides. Webcams default to 4:3 on many PCs. Returns the resolution."""
+    try:
+        items = cl.get_input_properties_list_property_items(cam, "resolution").property_items
+    except OBSSDKRequestError:
+        return None
+    best = None
+    for i in items:
+        try:
+            w, h = (int(v) for v in str(i["itemValue"]).split("x"))
+        except ValueError:
+            continue
+        if w * 9 == h * 16 and w <= 1920 and (best is None or w > best[0]):
+            best = (w, h)
+    if best:
+        cl.set_input_settings(cam, {"res_type": 1, "resolution": f"{best[0]}x{best[1]}"}, True)   # 1: Custom
+        return f"{best[0]}x{best[1]}"
+    return None
 
 
 if __name__ == "__main__":

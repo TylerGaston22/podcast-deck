@@ -105,6 +105,28 @@ def clamp_move(box, dx, dy, canvas):
     return min(max(0, x + dx), cw - w), min(max(0, y + dy), ch - h), w, h
 
 
+def snap(box, canvas, margin, reach):
+    """Snap a dragged box to the screen's edges (a margin in from them, so corners line up like the layouts)
+    and to its center lines, when it's within `reach`. Returns the box and the guide lines it snapped to,
+    as ("x", position) or ("y", position)."""
+    x, y, w, h = box
+    cw, ch = canvas
+    guides = []
+    for target, pos, axis, guide in ((margin, x, "x", margin), (cw - margin - w, x, "x", cw - margin),
+                                     ((cw - w) / 2, x, "x", cw / 2)):
+        if abs(pos - target) <= reach:
+            x = target
+            guides.append((axis, guide))
+            break
+    for target, pos, axis, guide in ((margin, y, "y", margin), (ch - margin - h, y, "y", ch - margin),
+                                     ((ch - h) / 2, y, "y", ch / 2)):
+        if abs(pos - target) <= reach:
+            y = target
+            guides.append((axis, guide))
+            break
+    return (x, y, w, h), guides
+
+
 def clamp_resize(box, dx, canvas, min_w):
     """Box widened by dx from its top-left corner, keeping its shape and staying on screen."""
     x, y, w, h = box

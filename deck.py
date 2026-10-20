@@ -72,6 +72,7 @@ class Deck:
         self.items = []                        # cams and the video box in the current layout
         self.selected = self.me
         self.drag, self.pending, self.sending = None, None, False
+        self.guides = []                       # snap lines shown while dragging
         self.hold_until = 0.0                  # keep the map as dragged until OBS has caught up
         self.names, self.sent_name = {}, False  # display names guests chose, by cam name
         self.now = {}                          # what's showing: background and video titles
@@ -302,7 +303,8 @@ class Deck:
 
         if ADMIN:
             cams_page = page("Cameras")
-            heading(cams_page, "Webcams", first=True)
+            heading(cams_page, "Cameras", first=True)
+            note(cams_page, "Each camera's name sits on it in the show and moves with it.")
             cams = tk.Frame(cams_page, bg=BG)
             cams.pack(fill="x")
             self.call(lambda b: b.devices(), then=lambda found: self.fill_devices(cams, found))
@@ -372,27 +374,46 @@ class Deck:
         self.key(win, "Close", win.destroy).pack(anchor="e", pady=(14, 0))
 
     def fill_devices(self, frame, found):
-        """Settings: one dropdown per webcam camera, plus the browser window for Browser + Cams."""
-        def row(r, label, choices, current, on_pick):
-            tk.Label(frame, text=label, bg=BG, fg=INK, font=STATUS_FONT, anchor="w").grid(row=r, column=0, sticky="w")
+        """Settings: one row per camera (the name shown on it, and the webcam it uses), plus the browser
+        window for Browser + Cams."""
+        def dropdown(r, choices, current, on_pick):
             names = [n for n, _ in choices]
-            box = ttk.Combobox(frame, values=names, state="readonly", width=34)
+            box = ttk.Combobox(frame, values=names, state="readonly", width=26)
             box.set(next((n for n, v in choices if v == current), "Pick one…"))
             box.bind("<<ComboboxSelected>>", lambda _e: on_pick(choices[box.current()][1]))
-            box.grid(row=r, column=1, padx=8, pady=2, sticky="w")
+            box.grid(row=r, column=1, padx=(8, 0), pady=3, sticky="w")
 
-        r = 0
+        def name_box(r, name):
+            """The name shown on this camera. Type a new one and press Enter (or click away)."""
+            e = tk.Entry(frame, width=18, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+            e.insert(0, self.names.get(name) or name)
+            e.grid(row=r, column=0, sticky="w", ipady=4, pady=3)
+            def save(_e=None):
+                shown = positions.clean_display_name(e.get()) or name
+                if shown != (self.names.get(name) or name):
+                    self.names[name] = shown
+                    self.call(lambda b: b.set_display_name(name, shown),
+                              then=lambda now: self.say(f"Camera name: {now}"))
+            e.bind("<Return>", save)
+            e.bind("<FocusOut>", save)
+
+        for c, text in enumerate(("Name on screen", "Webcam")):
+            tk.Label(frame, text=text, bg=BG, fg=INK_DIM, font=STATUS_FONT, anchor="w").grid(
+                row=0, column=c, sticky="w", padx=(8 if c else 0, 0))
+        r = 1
         for name, cam in found["cams"].items():
+            name_box(r, name)
             if cam["online"]:
-                tk.Label(frame, text=name, bg=BG, fg=INK, font=STATUS_FONT).grid(row=r, column=0, sticky="w")
                 tk.Label(frame, text="joins online (VDO.Ninja)", bg=BG, fg=INK_DIM, font=STATUS_FONT).grid(
-                    row=r, column=1, padx=8, sticky="w")
+                    row=r, column=1, padx=(8, 0), sticky="w")
             else:
-                row(r, name, cam["choices"], cam["current"],
-                    lambda v, n=name: self.call(lambda b: b.set_webcam(n, v), then=lambda _: self.say("Webcam set")))
+                dropdown(r, cam["choices"], cam["current"],
+                         lambda v, n=name: self.call(lambda b: b.set_webcam(n, v), then=lambda _: self.say("Webcam set")))
             r += 1
-        row(r, "Browser window", found["windows"], found["window"],
-            lambda v: self.call(lambda b: b.set_window(v), then=lambda _: self.say("Browser window set")))
+        tk.Label(frame, text="Browser window", bg=BG, fg=INK, font=STATUS_FONT, anchor="w").grid(
+            row=r, column=0, sticky="w", pady=(8, 0))
+        dropdown(r, found["windows"], found["window"],
+                 lambda v: self.call(lambda b: b.set_window(v), then=lambda _: self.say("Browser window set")))
 
     def fill_options(self, frame, names, found):
         """Settings: the name tag switch, and for each layout that shows a background: its default, its extra
@@ -538,6 +559,11 @@ class Deck:
         c, s = self.map, self.scale()
         c.delete("all")
         c.create_rectangle(0, 0, self.canvas[0] * s - 1, self.canvas[1] * s - 1, fill=KEY, outline=KEY_HOVER)
+        for axis, pos in self.guides:          # what a dragged camera snapped to
+            if axis == "x":
+                c.create_line(pos * s, 0, pos * s, self.canvas[1] * s, fill=LIT, dash=(2, 2))
+            else:
+                c.create_line(0, pos * s, self.canvas[0] * s, pos * s, fill=LIT, dash=(2, 2))
         if self.now.get("background") and any(i["name"] == "Video Panel" or i["name"].startswith("Cam - ")
                                               for i in self.items):
             c.create_text(6, 4, text="Background: " + self.now["background"], anchor="nw", fill=INK_DIM,
@@ -586,16 +612,22 @@ class Deck:
             return
         s = self.scale()
         dx, dy = (e.x - d["start"][0]) / s, (e.y - d["start"][1]) / s
+        self.guides = []
         if d["resize"]:
             box = positions.clamp_resize(d["box"], dx, self.canvas, min_w=self.canvas[0] * 0.08)
         else:
             box = positions.clamp_move(d["box"], dx, dy, self.canvas)
+            if not e.state & 0x0001:            # Shift held: move freely, no snapping
+                box, self.guides = positions.snap(box, self.canvas, margin=self.canvas[0] * 24 / 1920,
+                                                  reach=10 / s)
         d["item"]["box"] = box
         self.draw_map()
         self.push(d["scene"], d["item"]["name"], box)
 
     def map_release(self, _e):
         d, self.drag = self.drag, None
+        self.guides = []
+        self.draw_map()
         if not d or d["item"]["box"] == d["box"]:
             return
         name, scene, box = d["item"]["name"], d["scene"], d["item"]["box"]

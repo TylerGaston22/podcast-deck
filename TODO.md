@@ -8,10 +8,13 @@ into the README's Changelog.
 Nothing has been run against real OBS yet. Do this before building anything new.
 
 - [x] Install dependencies.
-- [ ] Open the deck: the first-launch window appears. Click I'm recording, enter names, Start.
-- [ ] Open OBS: the deck connects with OBS's own password and builds all seven layouts by itself.
-- [ ] Your webcam is picked automatically. Settings… shows the right webcams and browser windows, and
-      changing them works.
+- [x] Open the deck: the first-launch window appears. Click I'm recording, enter names, Start.
+- [x] Open OBS: the deck connects with OBS's own password and builds all seven layouts by itself.
+      (Found and fixed: layouts were sized for 1080p on a 4K canvas.)
+- [x] Settings… shows the webcam, and picking it works. Renaming a camera updates its tag.
+      (Found and fixed: the webcam wasn't picked on first build, and was in 4:3.)
+- [ ] Your webcam is picked automatically on a fresh setup, within 30 seconds of the deck connecting.
+- [x] Record from the deck: the button turns red, and the file plays back with the camera and background.
 - [ ] Launch `Podcast Deck.bat` and check:
   - [ ] The window opens with no console and stays on top.
   - [ ] Colors look right: blue for the active layout, red for recording.

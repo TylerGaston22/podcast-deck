@@ -6,7 +6,8 @@ OBS_HOST = "localhost"
 OBS_PORT = 4455
 OBS_PASSWORD = ""
 
-# Output canvas (match Settings → Video → Base Resolution).
+# Layouts follow OBS's own canvas (Settings → Video → Base Resolution), 1080p or 4K alike.
+# The sizes below (cams, margins, the video box) are for 1920x1080 and scale with it.
 CANVAS_W, CANVAS_H = 1920, 1080
 
 # One cam per person, in the order they appear left → right.

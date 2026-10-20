@@ -289,7 +289,7 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 | `OBS_HOST` | `"localhost"` | Always `"localhost"`: the deck only controls the OBS on its own PC |
 | `OBS_PORT` | `4455` | OBS WebSocket port |
 | `OBS_PASSWORD` | `""` | Leave empty: the deck reads OBS's own password |
-| `CANVAS_W`, `CANVAS_H` | `1920, 1080` | Must match OBS Settings → Video → Base Resolution |
+| `CANVAS_W`, `CANVAS_H` | `1920, 1080` | Only a fallback: layouts follow OBS's real canvas (1080p, 4K, …). Sizes in `config.py` are for 1920×1080 and scale with it |
 | `CAMS` | three names | One cam per person, left to right. Changing this re-flows every layout |
 | `DISCORD_STREAMKIT_URL` | `""` | Voice widget URL from https://streamkit.discord.com/overlay. Empty to skip |
 | `SMALL_CAM_W`, `SMALL_CAM_H` | `320, 180` | Size of each cam in the corner layouts |
@@ -500,6 +500,14 @@ Ideas welcome: open an issue.
 - Settings is split into tabs: Cameras, Backgrounds, Guests, Help.
 - Guests choose the name shown on their camera, and can change it in Settings → You.
 - Video + Cams now has the video on the right and the cams stacked down the left.
+
+**From the first real OBS test**
+
+- Layouts follow OBS's real canvas size, so a 4K canvas no longer gets half-size layouts in one corner.
+- Webcams are set to their sharpest 16:9 resolution (up to 1080p), so they fill their box.
+- The deck keeps trying to pick a webcam for the first 30 seconds, since OBS can be slow to list them.
+- Settings → Cameras: one row per camera, with the name shown on it and its webcam.
+- Dragging on the screen map snaps to corners, edges, and center lines (hold Shift to move freely).
 
 **Background videos and what's on**
 
