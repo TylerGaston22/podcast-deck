@@ -168,10 +168,3 @@ def download_picture(url):
     with open(dest, "wb") as f:
         f.write(data)
     return dest
-
-
-def write_now_playing(folder, vid=None, start=0):
-    """Tell player.html what to play by writing now_playing.js beside it. No vid = nothing."""
-    value = json.dumps({"id": vid, "start": start}) if vid else "null"
-    with open(os.path.join(folder, "now_playing.js"), "w", encoding="utf-8") as f:
-        f.write(f"window.NOW_PLAYING = {value};\n")

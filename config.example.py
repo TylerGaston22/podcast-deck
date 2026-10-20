@@ -31,6 +31,7 @@ INVITE = ""
 CAMERA_ID = ""     # guest: your private VDO.Ninja ID, made by Start my camera
 DISPLAY_NAME = ""  # guest: the name shown on your camera. Change it in the deck's Settings
 DECK_PORT = 4460   # admin: where guests' decks connect, over Tailscale only
+THEME = "Stream Launcher"   # the deck's colors; pick in Settings → Look
 
 # Discord StreamKit "Voice Widget" URL — shows everyone's Discord icon and lights
 # it up when they talk. Get it at https://streamkit.discord.com/overlay (pick your

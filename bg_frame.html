@@ -17,7 +17,7 @@
 <body>
 <div id="wrap"></div>
 <script>
-  const STATE = "/bg/state";
+  const STATE = "/" + (new URLSearchParams(location.search).get("ch") === "video" ? "video" : "bg") + "/state";
   let shown = null;      // what's loaded: "youtube:<id>" or "video:<url>"
   let player = null, video = null, ready = false, lastSeek = null;
 

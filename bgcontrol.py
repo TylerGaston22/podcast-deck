@@ -1,21 +1,24 @@
-"""Background videos: preview and control one in your browser, then put it in the background.
+"""Browser-controlled videos: the background video and the Video + Cams video, run from a page in your
+browser. Two channels: "bg" (the background) and "video" (the Video + Cams box).
 
 The deck runs a tiny web server on this PC only (127.0.0.1, never the network). It serves:
 
 - /bg: the control page (bg_control.html) opened in your browser after pasting a video link. You
   play, pause, mute, and seek there; nothing changes in OBS until you click "Use as background".
   After that, the same controls change the background video live.
-- /bg/state: on the admin's deck, the background video OBS should show right now.
-- /bg/frame: the player OBS shows for it (bg_frame.html). OBS's "Background Video" source is a local
-  file (bg_player.html) that loads this from localhost, because YouTube won't play for pages opened as
-  files or by IP address.
+- /bg/state and /video/state: on the admin's deck, what OBS should show right now in each channel.
+- /bg/frame?ch=…: the player OBS shows (bg_frame.html). OBS's "Background Video" and "Video Panel"
+  sources are local files (bg_player.html, player.html) that load it from localhost, because YouTube
+  won't play for pages opened by IP address.
 
 Every request that changes something needs this run's secret token, which only the deck and the
 page it opened know, so no website you visit can change your background.
 """
 import json
 import math
+import mimetypes
 import os
+import urllib.parse
 import re
 import secrets
 import threading
@@ -59,13 +62,16 @@ def valid_state(d):
     return out
 
 
+CHANNELS = ("bg", "video")
+
+
 class BgControl:
-    """The deck's local server. `deck` supplies live_state() and control(state, action)."""
+    """The deck's local server. `deck` supplies live_state(channel) and control(channel, state, action)."""
 
     def __init__(self, deck, admin):
         self.deck = deck
         self.token = secrets.token_urlsafe(18)
-        self.pending = None                    # the pasted video, before and after it goes live
+        self.pending = {}                      # channel → the video its page controls (with "live": bool)
         self.httpd = None
         server = self
 
@@ -88,15 +94,27 @@ class BgControl:
 
             def do_GET(self):
                 path, _, query = self.path.partition("?")
-                if path == "/bg/state":
-                    return self.reply(200, server.deck.live_state(), cors=True)
+                if path in ("/bg/state", "/video/state"):
+                    return self.reply(200, server.deck.live_state(path.split("/")[1]), cors=True)
+                if path == "/video/idle":         # what the empty Video + Cams box shows
+                    return self.reply(200, server.deck.idle_state(), cors=True)
+                if path.startswith("/bg/picture/"):   # a picture from the backgrounds folder, for that box
+                    name = os.path.basename(urllib.parse.unquote(path[len("/bg/picture/"):]))
+                    file = os.path.join(media.BACKGROUNDS, name)
+                    if name.lower().endswith(media.IMAGE_TYPES) and os.path.isfile(file):
+                        kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
+                        with open(file, "rb") as f:
+                            return self.reply(200, f.read(), kind, cors=True)
+                    return self.reply(404, {"message": "Not found."})
                 if path == "/bg/frame":
                     with open(FRAME, encoding="utf-8") as f:
                         return self.reply(200, f.read().encode(), "text/html; charset=utf-8")
-                if path == "/bg" and query == f"t={server.token}" and server.pending:
+                ch = query.partition("&ch=")[2] or "bg"
+                if path == "/bg" and query.partition("&")[0] == f"t={server.token}" and server.pending.get(ch):
                     with open(PAGE, encoding="utf-8") as f:
                         page = f.read()
-                    setup = json.dumps({"token": server.token, "source": server.pending})
+                    setup = json.dumps({"token": server.token, "channel": ch, "source": server.pending[ch],
+                                        "colors": server.deck.page_colors()})
                     page = page.replace("/*SETUP*/null", setup.replace("</", "<\\/"))
                     return self.reply(200, page.encode(), "text/html; charset=utf-8")
                 self.reply(404, {"message": "Not found."})
@@ -110,14 +128,14 @@ class BgControl:
                     body = json.loads(self.rfile.read(length))
                     if not secrets.compare_digest(str(body.get("token", "")), server.token):
                         return self.reply(403, {"message": "This page is out of date. Paste the link again."})
-                    action = body.get("action")
-                    if action not in ("preview", "go_live", "update", "stop"):
+                    action, ch = body.get("action"), body.get("channel", "bg")
+                    if action not in ("preview", "go_live", "update", "stop") or ch not in CHANNELS:
                         raise ValueError
                     state = valid_state(body.get("state")) if action != "stop" else None
                 except (ValueError, TypeError, AttributeError):
                     return self.reply(400, {"message": "Unknown request."})
                 try:
-                    self.reply(200, {"message": server.deck.control(state, action)})
+                    self.reply(200, {"message": server.deck.control(ch, state, action)})
                 except Exception as e:  # noqa: BLE001 - the page shows whatever went wrong
                     self.reply(400, {"message": str(e)})
 
@@ -131,6 +149,6 @@ class BgControl:
             self.httpd.daemon_threads = True
             threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
-    def page_url(self):
+    def page_url(self, channel="bg"):
         # localhost, not 127.0.0.1: YouTube refuses to play for pages opened by IP address.
-        return f"http://localhost:{self.httpd.server_address[1]}/bg?t={self.token}"
+        return f"http://localhost:{self.httpd.server_address[1]}/bg?t={self.token}&ch={channel}"

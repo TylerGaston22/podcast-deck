@@ -230,9 +230,13 @@ title) and the video in Video + Cams. The screen map shows the same.
 
 **Play link…** opens a small box. Paste a YouTube link (normal, `youtu.be`, Shorts, or live; a `t=`
 start time is kept) and press Enter. A link already on the clipboard is pasted in for you. The video
-plays in the Video + Cams box and its sound is recorded. **Stop video** clears the box. The **Restart
-the video when I switch away** option decides what happens when you leave Video + Cams: off, the video
-keeps playing silently and picks up wherever it has got to; on, it starts over each time you come back.
+plays in the Video + Cams box with its sound recorded, and a control page opens in your browser: play,
+pause, mute, volume, seek, and **Stop video**, which clears the box. The **Restart the video when I
+switch away** option decides what happens when you leave Video + Cams: off, the video keeps playing
+silently and picks up wherever it has got to; on, it starts over each time you come back.
+
+**Closing the deck stops both videos** (the Video + Cams one and a background video). If the deck isn't
+running, OBS's video boxes clear themselves within a few seconds.
 
 **The screen map** under the layout buttons shows where each camera sits in the current layout. Drag a
 camera to move it, or drag the small square in its corner to resize it. OBS follows along live, and the
@@ -240,17 +244,41 @@ move only affects that layout and only lasts for this session: every session sta
 spots. **Reset camera** puts the selected camera back on its default spot. On the admin deck you can drag
 anyone's camera; click one to select it. Guests can only drag their own.
 
-**Settings…** (admin) has four tabs:
+**The window:** a header with the **OBS** status pill (green when connected, orange when not) and a red
+**REC** pill with the running time while recording; the **LAYOUTS** list; the **SCREEN** map; **MEDIA**;
+**Record**; and a status bar at the bottom for messages.
+
+**Layouts** are color-coded by kind: blue for game, green for talking, magenta for video, yellow for
+breaks, gray for your own scenes. The live one has an accent bar. Tabs above the list (**General**, plus
+tabs you add with **＋**) keep them sorted; right-click a tab to rename or delete it. Hotkeys follow OBS's
+order whatever tab is showing.
+
+**Save layout** (under the screen map, admin only) saves the live layout exactly as it is now as its
+default: every source's position and size (moved on the map or in OBS), the cameras' spots, and the
+background picture showing. New sessions and Repair layouts start from it.
+
+**Each layout's menu** (hover and click **⋯**, or right-click the row; admin only): **Save layout as it is
+now**, **Rename…** (renames
+OBS's scene too), **Start on this layout** (the deck switches to it when it opens), **Default
+background**, **Tab**, **Color** (or Automatic, by kind), **Reset cameras here**, and **Delete layout…**.
+Repair layouts won't bring back a layout you deleted on purpose; **Bring back deleted layouts** (Settings
+→ Cameras) will.
+
+**Settings…** (admin) has these tabs:
 - **Cameras**: webcams, the browser window, **Show names on cams** (a name tag in each cam's corner that
-  moves with it), **Save camera spots as default** / **Reset cameras to default**, and **Rebuild layouts**.
+  moves with it), **Save camera spots as default** / **Reset cameras to default**, **Repair layouts**, and
+  **Bring back deleted layouts**.
 - **Backgrounds**: every layout that shows a background, each with a **Default** background and ticked
   extras. Switching to a layout puts up its default; picking another lasts until you switch layouts or the
   session ends. **Add picture…** saves a picture of your own and adds it to that layout. On a layout with
   extras, Background ▾ lists them first (★ marks the default) and `ctrl+alt+b` steps through just those.
   Background ▾ also has **Make this the default for …** for the current layout.
-- **Guests**: invites. **Help**: How it works.
+- **Guests**: invites, and the **Guests get full control** switch.
+- **Help**: How it works.
+- **Look**: four color schemes (Stream Launcher, Electric blue, Violet, Teal + orange). It changes right
+  away and is remembered on this PC; the browser control pages follow it.
 
-**Guests get full control** (admin deck only) gives guests' decks everything the admin deck has:
+**Guests get full control** (Settings → Guests, admin only) gives guests' decks everything the admin deck has:
 layouts, Record, Background ▾, Play link…, moving anyone's camera, and the hotkeys for all of them.
 It's off by default, and turning it off takes it all away again within a couple of seconds. Only the
 admin can flip it.
@@ -305,6 +333,7 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 | `INVITE` | `""` | Guests only: the invite the admin sent you. Filled in on first launch |
 | `CAMERA_ID` | `""` | Guests only: your private VDO.Ninja ID, made by **Start my camera** |
 | `DISPLAY_NAME` | `""` | Guests only: the name shown on your camera. Set when joining, changed in Settings |
+| `THEME` | `"Stream Launcher"` | The deck's color scheme, picked in Settings → Look |
 | `DECK_PORT` | `4460` | Admin only: the port guests' decks connect to, over Tailscale only |
 | `MOUSE_BUTTONS` | back → next, forward → record | Keys: `"x"` (back), `"x2"` (forward), `"middle"`. Values: a scene name, `"next"`, `"record"`, or `"next background"`. `{}` turns it off |
 
@@ -386,12 +415,14 @@ Turn on Crop to Bounding Box for each cam (Setup step 6).
 Replace their `Cam - …` source with a Window Capture of the Discord call window, or use Discord
 StreamKit's video widget as a Browser source.
 
-**"OBS doesn't have the new sources yet"**
-Click **Settings…** → **Cameras** → **Rebuild layouts**. It leaves your existing sources and their settings alone.
+**"Something the deck made is missing in OBS" / deleted a source by accident**
+Click **Settings…** → **Cameras** → **Repair layouts**. It puts back every source and layout the deck
+made and rebuilds the layouts. Your own scenes, and the settings of sources that still exist, are left
+alone. A deleted webcam source is set up again, webcam included.
 
 **A pasted background video doesn't show in OBS**
 The admin's deck has to be open, since OBS gets the background video from it. If you set up OBS before
-background videos existed, click **Settings…** → **Cameras** → **Rebuild layouts** once to add the Background Video
+background videos existed, click **Settings…** → **Cameras** → **Repair layouts** once to add the Background Video
 source.
 
 **"This video can't be played here"**
@@ -509,6 +540,22 @@ Ideas welcome: open an issue.
 - Settings → Cameras: one row per camera, with the name shown on it and its webcam.
 - Dragging on the screen map snaps to corners, edges, and center lines (hold Shift to move freely).
 
+**A deck that looks like an app**
+
+- Header with status pills (OBS connected, REC with timer), section labels, and a status bar.
+- Four color schemes in Settings → Look, starting from the stream launcher's own palette.
+- Layouts color-coded by kind, sorted into tabs you make, each with a menu: rename, start on it, default
+  background, tab, color, reset cameras, delete. Bring back deleted layouts in Settings.
+- The empty Video + Cams box shows a card ("Video coming up", or a picture), set in Settings → Backgrounds.
+- ＋ New layout (empty, or a copy of another) and Save layout (every source, plus the background picture).
+
+**Browser-controlled Video + Cams video, and Repair**
+
+- Play link… opens a browser control page for the Video + Cams video: play, pause, mute, volume, seek,
+  stop.
+- Closing the deck stops both videos; OBS's video boxes clear when the deck isn't running.
+- Settings → Cameras → Repair layouts puts back anything deleted in OBS.
+
 **Background videos and what's on**
 
 - Paste link: pictures (files or links) become the background right away; videos open a browser control
@@ -522,7 +569,7 @@ Ideas welcome: open an issue.
 - First-launch window: "I'm recording" or "I'm joining" writes `config.py`, so nobody edits it by hand.
 - The deck reads OBS's password from OBS itself, and turns on OBS's remote control if it's off.
 - Layouts are built automatically the first time, and webcams are picked automatically.
-- Settings window: webcams, browser window, Rebuild layouts, guest invites, and How it works.
+- Settings window: webcams, browser window, Repair layouts, guest invites, and How it works.
 - Start my camera: guests send their camera with one click, and the admin's deck adds it by itself.
 
 ## License

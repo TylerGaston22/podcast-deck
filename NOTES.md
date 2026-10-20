@@ -43,7 +43,7 @@ How the deck works when hosts join from different places. Setup steps are in the
 | Add new background pictures | Yes | No | No |
 | Invite guests, turn full control on or off | Yes | No | No |
 
-**Full control** is the "Guests get full control" switch on the admin's deck. It's off by default.
+**Full control** is the "Guests get full control" switch in the admin's Settings → Guests. It's off by default.
 Guests' decks notice it within about two seconds, with no restart.
 
 ## Moving cameras

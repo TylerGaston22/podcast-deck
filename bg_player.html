@@ -2,7 +2,7 @@
 <!-- The page OBS's "Background Video" source shows, above the background picture. It's a local file,
      so it always loads, even before the deck is open. When the admin's deck says there's a background
      video, it shows the deck's player page (bg_frame.html, from localhost, where YouTube will play).
-     Otherwise it's transparent, so the picture underneath shows. -->
+     Otherwise (or when the deck is closed) it's transparent, so the picture underneath shows. -->
 <html>
 <head>
 <meta charset="utf-8">
@@ -13,11 +13,12 @@
 </head>
 <body>
 <script>
-  let frame = null;
+  let frame = null, misses = 0;
   async function poll() {
     try {
       const r = await fetch("http://127.0.0.1:4461/bg/state", { cache: "no-store" });
       const s = await r.json();
+      misses = 0;
       if (s && !frame) {
         frame = document.createElement("iframe");
         frame.allow = "autoplay; encrypted-media";
@@ -28,7 +29,11 @@
         frame = null;
       }
     } catch (e) {
-      // The deck is closed: leave things as they are.
+      // The deck is closed: after a few seconds without it, take the video away.
+      if (++misses >= 3 && frame) {
+        frame.remove();
+        frame = null;
+      }
     }
   }
   poll();

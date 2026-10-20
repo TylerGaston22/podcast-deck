@@ -218,7 +218,11 @@ def build(cl, log=print, keep_scene=None):
     for name, shown in positions.read(cl, positions.DISPLAY_NAMES, {}).items():   # names guests chose
         if name in cfg.CAMS and shown:
             cl.set_input_settings(f"Name - {name}", {"text": f" {shown} "}, True)
-    for scene, items in LAYOUTS.items():
+    # Layouts renamed from the deck keep their new names; ones deleted on purpose stay deleted.
+    renames = positions.read(cl, positions.RENAMES, {})
+    removed = set(positions.read(cl, positions.REMOVED, []))
+    built = {renames.get(scene, scene): items for scene, items in LAYOUTS.items() if scene not in removed}
+    for scene, items in built.items():
         if scene in scenes:
             cl.remove_scene(scene)
         cl.create_scene(scene)
@@ -232,9 +236,9 @@ def build(cl, log=print, keep_scene=None):
 
     # 3. Remember each layout's usual cam spots (the deck's Reset button goes back to them), then
     #    put back any cams people have dragged somewhere else from their decks.
-    positions.write(cl, positions.DEFAULTS, {
+    positions.write(cl, positions.DEFAULTS, {**positions.read(cl, positions.DEFAULTS, {}), **{
         scene: {src: [x, y, bw, bh] for src, x, y, bw, bh in items if src.startswith("Cam - ")}
-        for scene, items in LAYOUTS.items()})
+        for scene, items in built.items()}})
     for name in cfg.CAMS:
         cam = f"Cam - {name}"
         for scene, box in positions.read(cl, positions.cam_slot(cam), {}).items():
@@ -245,7 +249,17 @@ def build(cl, log=print, keep_scene=None):
                                                 positions.tag_transform(box))
                 log(f"  kept moved cam  {cam} in {scene}")
 
-    cl.set_current_program_scene(keep_scene if keep_scene in LAYOUTS else "Gameplay + Cams")
+    # 4. Layouts saved from the deck (Save layout) come back exactly as they were saved: every source.
+    for scene, saved in positions.read(cl, positions.SAVED_LAYOUTS, {}).items():
+        for src, transform in saved.items():
+            if (scene, src) in item_ids:
+                cl.set_scene_item_transform(scene, item_ids[scene, src], transform)
+        if scene in built:
+            log(f"  kept saved      {scene}")
+
+    after = keep_scene if keep_scene in built or keep_scene in scenes else next(iter(built), None)
+    if after:
+        cl.set_current_program_scene(after)
 
 
 def webcams(cl, cam):

@@ -33,7 +33,16 @@ import link
 import media
 import positions
 from control import DeckError
-from theme import BG, KEY, KEY_HOVER, INK, INK_DIM, LIT, LIT_INK, REC, FONT, STATUS_FONT
+import theme
+from theme import BRAND_FONT, FONT, HINT_FONT, LABEL_FONT, ROW_FONT, STATUS_FONT
+
+
+def paint():
+    """Copy the current color scheme's colors (BG, LIT, OK, …) into this module's globals."""
+    globals().update(theme.tokens())
+
+
+paint()
 
 HANDLE = 10                                    # px: grab this close to a box's corner to resize it
 NOTES = os.path.join(media.APP_DIR, "NOTES.md")
@@ -46,6 +55,22 @@ def use_config(found):
     ADMIN = getattr(cfg, "ADMIN", True)        # older config.py files are the single-PC setup
     DECK_PORT = getattr(cfg, "DECK_PORT", 4460)
     BACKGROUND_HOTKEY = getattr(cfg, "BACKGROUND_HOTKEY", "ctrl+alt+b")
+    theme.use(getattr(cfg, "THEME", theme.DEFAULT))
+    paint()
+
+
+def category(scene):
+    """What kind of layout a scene is, for its color: game, talk, video, break, or other."""
+    n = scene.lower()
+    if "video" in n or "browser" in n:
+        return "video"
+    if "right back" in n or "brb" in n or "break" in n:
+        return "break"
+    if "game" in n or "desktop" in n:
+        return "game"
+    if "us" in n.split() or "cam" in n or "talk" in n:
+        return "talk"
+    return "other"
 
 
 if configfile.load() is not None:              # no config.py yet: the welcome window makes one
@@ -76,52 +101,93 @@ class Deck:
         self.hold_until = 0.0                  # keep the map as dragged until OBS has caught up
         self.names, self.sent_name = {}, False  # display names guests chose, by cam name
         self.now = {}                          # what's showing: background and video titles
-        self.bg_preview, self.bg_mine = None, False   # the pasted background video, and whether it's live
+        self.bg_preview = None                 # the pasted background video's place in its preview
+        self.mine = {"bg": False, "video": False}   # whether this deck's control page runs each channel live
         self.bg = bgcontrol.BgControl(self, ADMIN)    # this PC only: the browser control page, and OBS's feed
 
-        root.title("Deck" if ADMIN else "Deck · guest")
-        root.configure(bg=BG)
+        self.last_state = None                 # the last OBS state, to redraw after a color scheme change
+        self.meta = {"tabs": [positions.GENERAL], "tab": {}, "color": {}}   # layout tabs and marker colors
+        self.tab = positions.GENERAL           # the tab being shown
+        root.title("Podcast Deck" if ADMIN else "Podcast Deck · guest")
         root.attributes("-topmost", True)
-        root.geometry("300x800" if ADMIN else "300x560")
-        root.minsize(220, 300)
+        root.geometry("320x880" if ADMIN else "320x600")
+        root.minsize(260, 320)
+        self.build_ui()
+        self.set_control_hotkeys(ADMIN)
 
-        self.status = tk.Label(root, text="Connecting…", bg=BG, fg=INK_DIM, font=STATUS_FONT,
-                               anchor="w", justify="left", wraplength=280)
-        self.status.pack(fill="x", padx=12, pady=(12, 6))
-        self.grid = tk.Frame(root, bg=BG)
-        # Everything under the layout buttons sits at the bottom and always stays visible; the layout
-        # buttons get whatever room is left.
-        bottom = tk.Frame(root, bg=BG)
+        if cfg.MOUSE_BUTTONS:
+            mouse.hook(self.on_mouse)
+        if self.setup_problem:
+            self.status.config(text=self.setup_problem)
+        else:
+            self.poll()
+
+    def build_ui(self):
+        """Header, layouts, screen map, media, record, status bar. Rebuilt when the color scheme changes."""
+        root = self.root
+        root.configure(bg=BG)
+
+        # Header: the brand on the left, status pills on the right.
+        header = tk.Frame(root, bg=PANEL)
+        header.pack(fill="x")
+        tk.Frame(root, bg=LINE, height=1).pack(fill="x")
+        tk.Label(header, text="P", bg=LIT, fg=LIT_INK, font=LABEL_FONT, width=2).pack(side="left", padx=(12, 8), pady=10)
+        tk.Label(header, text="PODCAST DECK", bg=PANEL, fg=INK, font=BRAND_FONT).pack(side="left")
+        self.obs_pill = self.pill(header, "OBS" if ADMIN else "ADMIN")
+        self.obs_pill["frame"].pack(side="right", padx=(4, 12))
+        self.rec_pill = self.pill(header, "REC")
+
+        # Status bar at the very bottom: what's happening, and messages.
+        bar = tk.Frame(root, bg=PANEL)
+        bar.pack(side="bottom", fill="x")
+        tk.Frame(root, bg=LINE, height=1).pack(side="bottom", fill="x")
+        self.status = tk.Label(bar, text=self.notice if time.monotonic() < self.notice_until else "Connecting…",
+                               bg=PANEL, fg=INK_DIM, font=STATUS_FONT, anchor="w", justify="left", wraplength=290)
+        self.status.pack(fill="x", padx=12, pady=6)
+
+        body = tk.Frame(root, bg=BG)
+        body.pack(fill="both", expand=True, padx=12)
+        # Everything under the layouts sits at the bottom and always stays visible; the layouts get the rest.
+        bottom = tk.Frame(body, bg=BG)
         bottom.pack(side="bottom", fill="x")
-        self.grid.pack(fill="both", expand=True, padx=12)
+        head = tk.Frame(body, bg=BG)
+        head.pack(fill="x", pady=(10, 4))
+        self.section(head, "LAYOUTS").pack(side="left")
+        if ADMIN:                              # always in view, however many layouts there are
+            new = tk.Label(head, text="＋ New layout", bg=BG, fg=LIT, font=LABEL_FONT, cursor="hand2", padx=8)
+            new.pack(side="left")
+            new.bind("<Button-1>", lambda _e: self.new_layout_box())
+        self.tabs_bar = tk.Frame(body, bg=BG)       # General, plus tabs of your own
+        self.tabs_bar.pack(fill="x", pady=(0, 4))
+        self.grid = tk.Frame(body, bg=BG)
+        self.grid.pack(fill="both", expand=True)
 
         # Screen map: drag a camera to move it, drag its corner to resize it.
+        self.section(bottom, "SCREEN").pack(fill="x", pady=(10, 4))
         self.map = tk.Canvas(bottom, bg=BG, highlightthickness=0, height=150, cursor="hand2")
-        self.map.pack(fill="x", padx=12, pady=(12, 0))
+        self.map.pack(fill="x")
         self.map.bind("<Configure>", self.fit_map)
         self.map.bind("<ButtonPress-1>", self.map_press)
         self.map.bind("<B1-Motion>", self.map_drag)
         self.map.bind("<ButtonRelease-1>", self.map_release)
         under = tk.Frame(bottom, bg=BG)
-        under.pack(fill="x", padx=12, pady=(6, 0))
+        under.pack(fill="x", pady=(6, 0))
         self.reset_button = self.small_key(under, "Reset camera" if ADMIN else "Reset my camera", self.reset_camera)
         self.reset_button.pack(side="left")
+        if ADMIN:
+            self.small_key(under, "Save layout", self.save_layout).pack(side="left", padx=4)
         self.small_key(under, "Settings…", self.settings_box).pack(side="right")
         if not ADMIN:
             start = self.small_key(under, "Start my camera", self.start_camera)
             start.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
             start.pack(side="right", padx=4)
-        if ADMIN:
-            self.full_var = tk.BooleanVar(value=False)
-            tk.Checkbutton(bottom, text="Guests get full control", variable=self.full_var, anchor="w",
-                           command=self.set_full, bg=BG, fg=INK_DIM, selectcolor=KEY, activebackground=BG,
-                           activeforeground=INK, font=STATUS_FONT).pack(fill="x", padx=8, pady=(6, 0))
 
-        # Record, Background, and Play link: always on the admin deck, on guests' only with full control.
+        # Media and Record: always on the admin deck, on guests' only with full control.
         self.controls = tk.Frame(bottom, bg=BG)
         self.controls.pack(fill="x")
+        self.section(self.controls, "MEDIA").pack(fill="x", pady=(10, 4))
         self.now_label = tk.Label(self.controls, text="", bg=BG, fg=INK_DIM, font=STATUS_FONT, anchor="w")
-        self.now_label.pack(fill="x", padx=12, pady=(10, 0))
+        self.now_label.pack(fill="x")
         # A pasted background video waits here until someone switches to it.
         self.pending_row = tk.Frame(self.controls, bg=BG)
         tk.Label(self.pending_row, text="Video ready in your browser", bg=BG, fg=LIT,
@@ -131,7 +197,7 @@ class Deck:
         switch.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
         switch.pack(side="right", padx=4)
         extras = tk.Frame(self.controls, bg=BG)
-        extras.pack(fill="x", padx=12, pady=(6, 0))
+        extras.pack(fill="x", pady=(6, 0))
         self.extras = extras
         # Small, side by side: the background menu, its Paste link box, and the Video + Cams link box.
         for col, (text, cmd) in enumerate((("Background ▾", self.background_menu), ("Paste link", self.bg_link_box),
@@ -142,19 +208,44 @@ class Deck:
             extras.columnconfigure(col, weight=1)
             if col == 0:
                 self.bg_button = b
-        self.rec = self.key(self.controls, "Record", self.toggle_record)
-        self.rec.pack(fill="x", padx=12, pady=12, ipady=8)
-        tk.Frame(bottom, bg=BG, height=12).pack()
-        if not ADMIN:
+        self.rec = self.key(self.controls, "●  Record", self.toggle_record)
+        self.rec.pack(fill="x", pady=(10, 12), ipady=8)
+        if not ADMIN and not self.full:
             self.controls.pack_forget()
-        self.set_control_hotkeys(ADMIN)
 
-        if cfg.MOUSE_BUTTONS:
-            mouse.hook(self.on_mouse)
-        if self.setup_problem:
-            self.status.config(text=self.setup_problem)
-        else:
-            self.poll()
+    def section(self, parent, text):
+        """A small uppercase section label, like the stream launcher's."""
+        return tk.Label(parent, text=text, bg=BG, fg=MUTED, font=LABEL_FONT, anchor="w")
+
+    def pill(self, parent, text):
+        """A rounded-looking status pill: a colored dot and a word. Returns its parts."""
+        frame = tk.Frame(parent, bg=NAV, highlightbackground=LINE, highlightthickness=1)
+        dot = tk.Canvas(frame, width=10, height=10, bg=NAV, highlightthickness=0)
+        dot.create_oval(1, 1, 9, 9, fill=MUTED, outline="", tags="dot")
+        dot.pack(side="left", padx=(8, 5), pady=6)
+        label = tk.Label(frame, text=text, bg=NAV, fg=INK, font=LABEL_FONT)
+        label.pack(side="left", padx=(0, 9))
+        return {"frame": frame, "dot": dot, "label": label}
+
+    def set_pill(self, pill, color, text=None):
+        pill["dot"].itemconfig("dot", fill=color)
+        if text is not None:
+            pill["label"].config(text=text)
+
+    def set_theme(self, scheme):
+        """Settings → Look: switch color scheme right away, and remember it on this PC."""
+        theme.use(scheme)
+        paint()
+        configfile.update(THEME=theme.name)
+        cfg.THEME = theme.name
+        for w in self.root.winfo_children():
+            w.destroy()
+        self.scenes, self.buttons = [], {}     # layout rows are rebuilt on the next draw
+        self.now = {}                          # and the Now line is refilled
+        self.build_ui()
+        if self.last_state:
+            self.render(self.last_state, None)
+        self.root.after(50, lambda: self.settings_box(tab="Look"))
 
     def on_mouse(self, event):
         if not isinstance(event, mouse.ButtonEvent) or event.event_type != mouse.DOWN:
@@ -249,8 +340,7 @@ class Deck:
         if self.can_control():
             self.call(lambda b: b.toggle_record())
 
-    def set_full(self):
-        full = self.full_var.get()
+    def set_full(self, full):
         self.call(lambda b: b.set_full(full),
                   then=lambda _: self.say("Guests now have full control" if full
                                           else "Guests can only move their own camera now"))
@@ -264,7 +354,7 @@ class Deck:
         ] if on else []
 
     # --- Settings -----------------------------------------------------------
-    def settings_box(self):
+    def settings_box(self, tab=None):
         """Admin: tabs for Cameras, Backgrounds, Guests, and Help. Guest: change invite, and Help."""
         win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
         win.title("Settings")
@@ -325,13 +415,24 @@ class Deck:
                 lambda b: b.reset_all(), then=lambda _: self.say("Cameras back on their default spots"))).pack(
                 side="left", padx=6)
 
-            heading(cams_page, "Layouts")
-            note(cams_page, "Rebuild after changing config.py. Cameras go back to their default spots.")
-            self.small_key(cams_page, "Rebuild layouts", lambda: self.call(
-                lambda b: b.rebuild(), then=lambda _: self.say("Layouts rebuilt"))).pack(anchor="w", pady=(4, 0))
+            heading(cams_page, "Repair")
+            note(cams_page, "Deleted something in OBS by accident? Repair layouts puts back every source and layout "
+                            "the deck made, and rebuilds the layouts. Your own scenes aren't touched. Cameras go "
+                            "back to their default spots. Also use it after changing config.py.")
+            row = tk.Frame(cams_page, bg=BG)
+            row.pack(fill="x", pady=(4, 0))
+            self.small_key(row, "Repair layouts", self.repair).pack(side="left")
+            self.small_key(row, "Bring back deleted layouts", lambda: self.call(
+                lambda b: b.restore_layouts(), then=lambda _: self.say("Deleted layouts are back"))).pack(side="left", padx=6)
 
             bg_page = page("Backgrounds")
-            heading(bg_page, "Backgrounds for each layout", first=True)
+            heading(bg_page, "Empty video box", first=True)
+            note(bg_page, "What the Video + Cams box shows when no video is playing.")
+            idle = tk.Frame(bg_page, bg=BG)
+            idle.pack(fill="x", pady=(4, 0))
+            self.call(lambda b: b.options(), then=lambda found: self.fill_idle(idle, found))
+
+            heading(bg_page, "Backgrounds for each layout")
             note(bg_page, "Switching to a layout puts up its default background. Tick extras to have them at the "
                           "top of Background ▾ on that layout. Add picture… saves your own.")
             pics = tk.Frame(bg_page, bg=BG)
@@ -347,6 +448,13 @@ class Deck:
             rows = tk.Frame(guests_page, bg=BG)
             rows.pack(fill="x", pady=(4, 0))
             self.fill_guests(rows, on)
+            heading(guests_page, "Full control")
+            note(guests_page, "Off: guests can only move their own camera. On: they get every control here "
+                              "(layouts, Record, backgrounds, videos, every camera). Only you can change this.")
+            full = tk.BooleanVar(value=self.full)
+            tk.Checkbutton(guests_page, text="Guests get full control", variable=full, anchor="w",
+                           command=lambda: self.set_full(full.get()), bg=BG, fg=INK, selectcolor=KEY,
+                           activebackground=BG, activeforeground=INK, font=STATUS_FONT).pack(fill="x", pady=(4, 0))
         else:
             you_page = page("You")
             heading(you_page, "Your name", first=True)
@@ -370,8 +478,39 @@ class Deck:
         self.small_key(help_page, "How it works", lambda: subprocess.Popen(["notepad.exe", NOTES])).pack(
             anchor="w", pady=(4, 0))
 
-        show(next(iter(pages)))
+        look_page = page("Look")
+        heading(look_page, "Color scheme", first=True)
+        note(look_page, "Changes right away, on this PC only. The browser control pages follow it.")
+        swatches = tk.Frame(look_page, bg=BG)
+        swatches.pack(fill="x", pady=(6, 0))
+        for i, (scheme, colors) in enumerate(theme.SCHEMES.items()):
+            current = scheme == theme.name
+            card = tk.Frame(swatches, bg=colors["BG"], highlightthickness=2,
+                            highlightbackground=colors["LIT"] if current else LINE, cursor="hand2")
+            card.grid(row=i // 2, column=i % 2, padx=(0, 8), pady=(0, 8), sticky="nsew")
+            title = tk.Label(card, text=("✓ " if current else "") + scheme, bg=colors["BG"], fg=colors["INK"],
+                             font=STATUS_FONT + ("bold",), anchor="w")
+            title.pack(fill="x", padx=10, pady=(8, 4))
+            chips = tk.Frame(card, bg=colors["BG"])
+            chips.pack(fill="x", padx=10, pady=(0, 10))
+            parts = [card, title, chips]
+            for token in ("LIT", "OK", "WARN", "REC", "KEY"):
+                chip = tk.Frame(chips, bg=colors[token], width=26, height=14)
+                chip.pack(side="left", padx=(0, 4))
+                parts.append(chip)
+            for w in parts:
+                w.bind("<Button-1>", lambda _e, sc=scheme: self.set_theme(sc))
+
+        show(tab if tab in pages else next(iter(pages)))
         self.key(win, "Close", win.destroy).pack(anchor="e", pady=(14, 0))
+
+    def repair(self):
+        """Settings → Repair layouts. Asks first while recording, since the picture changes for a moment."""
+        if self.recording and not messagebox.askyesno(
+                "Podcast Deck", "You're recording. Repairing rebuilds the layouts, so the picture changes for a "
+                                "moment. Repair now anyway?", parent=self.root):
+            return
+        self.call(lambda b: b.rebuild(), then=lambda _: self.say("Layouts repaired: everything the deck made is back"))
 
     def fill_devices(self, frame, found):
         """Settings: one row per camera (the name shown on it, and the webcam it uses), plus the browser
@@ -455,8 +594,29 @@ class Deck:
                                selectcolor=KEY, activebackground=BG, activeforeground=INK, font=STATUS_FONT,
                                anchor="w").grid(row=i // 3, column=i % 3, sticky="w", padx=(0, 8))
         if not found["layouts"]:
-            tk.Label(frame, text="No layouts with a background yet. Click Rebuild layouts below.", bg=BG,
+            tk.Label(frame, text="No layouts with a background yet. Click Repair layouts on the Cameras tab.", bg=BG,
                      fg=INK_DIM, font=STATUS_FONT, anchor="w").pack(fill="x")
+
+    def fill_idle(self, frame, found):
+        """Settings → Backgrounds → Empty video box: a text card, or one of the saved pictures."""
+        idle = found["video_idle"]
+        tk.Label(frame, text="Text", bg=BG, fg=INK_DIM, font=STATUS_FONT).grid(row=0, column=0, sticky="w")
+        text = tk.Entry(frame, width=26, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+        text.insert(0, idle["text"])
+        text.grid(row=0, column=1, padx=8, pady=3, sticky="w", ipady=4)
+        def save_text(_e=None):
+            self.call(lambda b: b.set_video_idle(text=text.get()), then=lambda _: self.say("Saved"))
+        text.bind("<Return>", save_text)
+        text.bind("<FocusOut>", save_text)
+        tk.Label(frame, text="Or a picture", bg=BG, fg=INK_DIM, font=STATUS_FONT).grid(row=1, column=0, sticky="w")
+        pics = found["pictures"]
+        box = ttk.Combobox(frame, values=["None (show the text)"] + [os.path.splitext(p)[0] for p in pics],
+                           state="readonly", width=24)
+        box.set(os.path.splitext(idle["picture"])[0] if idle["picture"] in pics else "None (show the text)")
+        box.bind("<<ComboboxSelected>>", lambda _e: self.call(
+            lambda b: b.set_video_idle(picture="" if box.current() == 0 else pics[box.current() - 1]),
+            then=lambda _: self.say("Saved")))
+        box.grid(row=1, column=1, padx=8, pady=3, sticky="w")
 
     def add_layout_picture(self, frame, names, layout):
         """Settings → Add picture… for one layout: pick a picture of your own; it's saved and added."""
@@ -813,23 +973,30 @@ class Deck:
         entry.focus_set()
         entry.select_range(0, "end")
 
+    def open_control(self, channel, source, live=False):
+        """Open the browser control page for a video: "bg" (a pasted background, live only after Use as
+        background) or "video" (the Video + Cams box, live straight away)."""
+        if not self.bg.httpd:
+            self.tell("The deck couldn't start its video page. Close other decks on this PC and reopen this one.")
+            return False
+        self.bg.pending[channel] = dict(source, live=live)
+        self.mine[channel] = live
+        webbrowser.open(self.bg.page_url(channel))
+        return True
+
     def open_bg_preview(self, source):
         """Open the browser control page for a pasted background video."""
-        if not self.bg.httpd:
-            self.tell("The deck couldn't start its background video page. Close other decks on this PC and "
-                      "reopen this one.")
-            return
-        self.bg.pending, self.bg_preview, self.bg_mine = source, None, False
-        webbrowser.open(self.bg.page_url())
-        self.pending_row.pack(fill="x", padx=12, pady=(6, 0), before=self.extras)
-        self.say("Control the video in your browser. It switches when you click Use as background or Switch.", 10)
+        self.bg_preview = None
+        if self.open_control("bg", source):
+            self.pending_row.pack(fill="x", padx=12, pady=(6, 0), before=self.extras)
+            self.say("Control the video in your browser. It switches when you click Use as background or Switch.", 10)
 
     def hide_pending(self):
         self.pending_row.pack_forget()
 
     def switch_background(self):
         """The deck's Switch button: put the previewed video in the background, from where the preview is."""
-        src = self.bg.pending
+        src = self.bg.pending.get("bg")
         if not src:
             return
         state = self.bg_preview or {"kind": src["kind"], "id": src.get("id"), "url": src.get("url"),
@@ -838,41 +1005,77 @@ class Deck:
         self.call(lambda b: b.set_bg_video(state), then=lambda _: self.went_live())
 
     def went_live(self):
-        self.bg_mine = True
+        self.mine["bg"] = True
         self.hide_pending()
         self.say("Background video is live. Your browser tab controls it.", 8)
 
     # Called by the local server (bgcontrol.py), from its own thread.
-    def live_state(self):
-        return self.backend.live_bg() if ADMIN and isinstance(self.backend, control.Local) else None
+    def live_state(self, channel):
+        return self.backend.live(channel) if ADMIN and isinstance(self.backend, control.Local) else None
 
-    def control(self, state, action):
-        if action == "preview":
+    def page_colors(self):
+        """The color scheme, as CSS variables, for the browser control pages."""
+        return theme.css()
+
+    def idle_state(self):
+        """What the empty Video + Cams box shows (admin only): {"text", "picture"}."""
+        if not (ADMIN and isinstance(self.backend, control.Local)):
+            return None
+        try:
+            return self.backend.video_idle()
+        except (DeckError, ConnectionError):
+            return None
+
+    def control(self, channel, state, action):
+        """A browser control page did something: preview, go_live, update, or stop."""
+        if channel == "bg" and action == "preview":
             self.bg_preview = state
+            return ""
+        if action == "preview":
             return ""
         if self.backend is None:
             raise DeckError("The deck isn't connected yet.")
+        put = self.backend.set_bg_video if channel == "bg" else self.backend.set_video
         if action == "go_live":
-            self.backend.set_bg_video(state)
-            self.root.after(0, self.went_live)
+            put(state)
+            self.mine[channel] = True
+            if channel == "bg":
+                self.root.after(0, self.went_live)
             return "Live"
         if action == "update":
-            if self.bg_mine:
-                self.backend.set_bg_video(state)
+            if self.mine.get(channel):
+                put(state)
             return ""
-        self.backend.set_bg_video(None)                     # stop
-        self.bg_mine = False
-        self.root.after(0, self.say, "Background video stopped")
+        put(None)                                           # stop
+        self.mine[channel] = False
+        self.root.after(0, self.say, "Background video stopped" if channel == "bg" else "Video stopped")
         return "Stopped"
+
+    def closing(self):
+        """Closing the admin's deck stops both videos in OBS, so nothing keeps playing without a way to stop it."""
+        if ADMIN and isinstance(self.backend, control.Local):
+            for put in (self.backend.set_video, self.backend.set_bg_video):
+                try:
+                    put(None)
+                except (DeckError, ConnectionError):
+                    pass
+        self.root.destroy()
 
     # --- Video link --------------------------------------------------------
     def play_link(self):
         self.call(lambda b: b.video_settings(), then=self.link_box)
 
     def play_video(self, vid=None, start=0, title=None):
-        """Play a video in the Video + Cams box, or stop it when vid is None."""
-        self.call(lambda b: b.play_video(vid, start, title),
-                  then=lambda _: self.say("Playing in Video + Cams" if vid else "Video stopped"))
+        """Play a video in the Video + Cams box and open its browser control page, or stop it (vid None)."""
+        if vid is None:
+            self.call(lambda b: b.set_video(None), then=lambda _: self.say("Video stopped"))
+            return
+        source = {"kind": "youtube", "id": vid, "start": start, "title": title or "YouTube video"}
+        state = {"kind": "youtube", "id": vid, "title": source["title"], "playing": True, "muted": False,
+                 "volume": 100, "time": start, "seek": 1}
+        self.call(lambda b: b.set_video(state), then=lambda _: (
+            self.open_control("video", source, live=True),
+            self.say("Playing in Video + Cams. Pause, mute, or stop it in the browser tab that opened.", 10)))
 
     def link_box(self, settings):
         """The paste box: YouTube link in, video playing in Video + Cams out."""
@@ -963,9 +1166,11 @@ class Deck:
     def render(self, state, error):
         if error:
             self.status.config(text=error)
-            for b in self.buttons.values():
-                b.config(bg=KEY, fg=INK)
+            self.set_pill(self.obs_pill, BAD, "OBS OFFLINE" if ADMIN else "ADMIN OFFLINE")
+            self.rec_pill["frame"].pack_forget()
             return
+        self.last_state = state
+        self.set_pill(self.obs_pill, OK, "OBS" if ADMIN else "ADMIN")
         if not ADMIN:
             you = state.get("you")
             self.me = f"Cam - {you}" if you else None
@@ -992,11 +1197,15 @@ class Deck:
         self.canvas = tuple(state["canvas"])
         full = state["full"]
         self.full = full
-        if ADMIN:
-            self.full_var.set(full)
-        elif full != self.built_full:
+        if not ADMIN and full != self.built_full:
             self.guest_controls(full)
-        if state["scenes"] != self.scenes or (not ADMIN and full != self.built_full):
+        meta = state.get("meta") or self.meta
+        if (state["scenes"] != self.scenes or meta != self.meta or not self.buttons
+                or (not ADMIN and full != self.built_full)):
+            self.meta = meta
+            if self.tab not in meta["tabs"]:
+                self.tab = positions.GENERAL
+            self.current = state["current"]
             self.rebuild(state["scenes"])
         self.built_full = full
         self.current, self.recording = state["current"], state["recording"]
@@ -1008,24 +1217,31 @@ class Deck:
             rec_txt += f" ({cfg.RECORD_HOTKEY})"
         if time.monotonic() >= self.notice_until:
             self.status.config(text=f"{self.current}  ·  {rec_txt}")
-        for name, b in self.buttons.items():
-            lit = name == self.current
-            b.config(bg=LIT if lit else KEY, fg=LIT_INK if lit else INK,
-                     disabledforeground=LIT_INK if lit else INK_DIM)
-        self.rec.config(text="Stop recording" if self.recording else "Record",
-                        bg=REC if self.recording else KEY, fg="#FFFFFF" if self.recording else INK)
+        if self.recording:                     # a red REC pill with the running time, like a real recorder
+            secs = int((state.get("rec_ms") or 0) / 1000)
+            self.set_pill(self.rec_pill, REC, f"REC {secs // 3600}:{secs // 60 % 60:02d}:{secs % 60:02d}"
+                          if secs >= 3600 else f"REC {secs // 60:02d}:{secs % 60:02d}")
+            if not self.rec_pill["frame"].winfo_ismapped():
+                self.rec_pill["frame"].pack(side="right", padx=4)
+        else:
+            self.rec_pill["frame"].pack_forget()
+        for name in self.buttons:
+            self.paint_row(name)
+        self.rec.config(text="■  Stop recording" if self.recording else "●  Record",
+                        bg=REC if self.recording else KEY, fg="#FFFFFF" if self.recording else INK,
+                        activebackground=REC if self.recording else KEY_HOVER)
 
     def guest_controls(self, full):
         """Guest deck: show or hide the admin's controls when full control is turned on or off."""
         if full:
             self.controls.pack(fill="x", after=self.reset_button.master)
-            self.root.geometry(f"{self.root.winfo_width()}x800")
+            self.root.geometry(f"{self.root.winfo_width()}x880")
             self.reset_button.config(text="Reset camera")
             if self.built_full is not None:
                 self.say("The admin gave you full control")
         else:
             self.controls.pack_forget()
-            self.root.geometry(f"{self.root.winfo_width()}x560")
+            self.root.geometry(f"{self.root.winfo_width()}x600")
             self.reset_button.config(text="Reset my camera")
             self.selected = self.me
             if self.built_full:
@@ -1033,7 +1249,10 @@ class Deck:
         self.set_control_hotkeys(full)
 
     def rebuild(self, scenes):
+        """The tab strip, then one row per layout in the current tab: a color marker, its name, a ⋯ menu
+        (admin), and its hotkey. The live one is lit. Hotkeys follow OBS's order, whatever tab is showing."""
         self.scenes = scenes
+        self.draw_tabs()
         for w in self.grid.winfo_children():
             w.destroy()
         for hk in self.hotkeys:
@@ -1041,14 +1260,228 @@ class Deck:
         self.hotkeys, self.buttons = [], {}
         live = self.can_control()
         for i, name in enumerate(scenes, start=1):
-            label = f"{name}    {cfg.HOTKEY_PREFIX}{i}" if i <= 9 and live else name
-            b = self.key(self.grid, label, lambda n=name: self.switch(n))
-            b.config(state="normal" if live else "disabled", cursor="hand2" if live else "arrow")
-            b.pack(fill="both", expand=True, pady=2, ipady=2)
-            self.buttons[name] = b
             if i <= 9 and live:
                 self.hotkeys.append(keyboard.add_hotkey(
                     f"{cfg.HOTKEY_PREFIX}{i}", lambda n=name: self.root.after(0, self.switch, n)))
+            if self.meta["tab"].get(name, positions.GENERAL) != self.tab:
+                continue
+            row = tk.Frame(self.grid, bg=NAV, cursor="hand2" if live else "arrow")
+            row.pack(fill="both", expand=True, pady=1)
+            bar = tk.Frame(row, bg=NAV, width=3)
+            bar.pack(side="left", fill="y")
+            color = self.meta["color"].get(name) or theme.category_color(category(name))
+            chip = tk.Frame(row, bg=color, width=10, height=10)
+            chip.pack(side="left", padx=(10, 10))
+            label = tk.Label(row, text=name, bg=NAV, fg=INK if live else INK_DIM, font=ROW_FONT, anchor="w")
+            label.pack(side="left", fill="x", expand=True, pady=3)
+            hint = tk.Label(row, text=f"{cfg.HOTKEY_PREFIX}{i}" if i <= 9 and live else "", bg=NAV, fg=MUTED,
+                            font=HINT_FONT)
+            hint.pack(side="right", padx=(4, 10))
+            dots = tk.Label(row, text="⋯", bg=NAV, fg=NAV, font=FONT, cursor="hand2") if ADMIN else None
+            if dots:
+                dots.pack(side="right")
+                dots.bind("<Button-1>", lambda e, n=name: self.layout_menu(n, e) or "break")
+            self.buttons[name] = {"row": row, "bar": bar, "label": label, "hint": hint, "dots": dots, "live": live}
+            for w in (row, label, hint, chip) + ((dots,) if dots else ()):
+                if live and w is not dots:
+                    w.bind("<Button-1>", lambda _e, n=name: self.switch(n))
+                w.bind("<Enter>", lambda _e, n=name: self.paint_row(n, hover=True))
+                w.bind("<Leave>", lambda _e, n=name: self.paint_row(n))
+                if ADMIN:
+                    w.bind("<Button-3>", lambda e, n=name: self.layout_menu(n, e))
+            self.paint_row(name)
+        if not self.buttons:
+            tk.Label(self.grid, text="No layouts in this tab yet. Click ＋ New layout above, or use a layout's ⋯ → Tab.",
+                     bg=BG, fg=MUTED, font=STATUS_FONT, wraplength=280, justify="left", anchor="w").pack(fill="x")
+
+    def new_layout_box(self):
+        """＋ New layout: a name, and what to start from. It goes into the tab that's showing."""
+        win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
+        win.title("New layout")
+        win.attributes("-topmost", True)
+        win.transient(self.root)
+        win.resizable(False, False)
+        tk.Label(win, text="New layout" + ("" if self.tab == positions.GENERAL else f" in {self.tab}"), bg=BG, fg=INK,
+                 font=FONT, anchor="w").pack(fill="x")
+        tk.Label(win, text="Name", bg=BG, fg=INK_DIM, font=STATUS_FONT, anchor="w").pack(fill="x", pady=(8, 0))
+        name = tk.Entry(win, width=34, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+        name.pack(fill="x", ipady=5)
+        name.focus_set()
+        tk.Label(win, text="Start from", bg=BG, fg=INK_DIM, font=STATUS_FONT, anchor="w").pack(fill="x", pady=(8, 0))
+        empty = "Empty (background + cams side by side)"
+        choices = [empty] + [f"A copy of {s}" for s in self.scenes]
+        start = ttk.Combobox(win, values=choices, state="readonly", width=34)
+        start.set(empty)
+        start.pack(fill="x")
+        note = tk.Label(win, text="", bg=BG, fg=REC, font=STATUS_FONT, anchor="w", wraplength=300, justify="left")
+        note.pack(fill="x", pady=(6, 0))
+
+        def create(_e=None):
+            text = name.get().strip()
+            if not text:
+                note.config(text="Give the layout a name.")
+                return
+            base = "" if start.current() == 0 else self.scenes[start.current() - 1]
+            tab = self.tab
+            win.destroy()
+            self.call(lambda b: b.new_layout(text, base, tab), then=lambda made: self.say(
+                f"{made} made. Drag cameras on the map; ⋯ sets its background and color."))
+        row = tk.Frame(win, bg=BG)
+        row.pack(fill="x", pady=(10, 0))
+        go = self.small_key(row, "Create", create)
+        go.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
+        go.pack(side="left")
+        self.small_key(row, "Cancel", win.destroy).pack(side="right")
+        win.bind("<Return>", create)
+        win.bind("<Escape>", lambda _e: win.destroy())
+
+    def draw_tabs(self):
+        """General, your own tabs, and ＋ (admin) to make another. Right-click a tab to rename or delete it."""
+        for w in self.tabs_bar.winfo_children():
+            w.destroy()
+        tabs = self.meta["tabs"]
+        if len(tabs) == 1 and not ADMIN:
+            return                             # just General: no strip needed
+        for tab in tabs:
+            on = tab == self.tab
+            t = tk.Label(self.tabs_bar, text=tab, bg=LIT if on else NAV, fg=LIT_INK if on else INK_DIM,
+                         font=STATUS_FONT + ("bold",), padx=10, pady=3, cursor="hand2")
+            t.pack(side="left", padx=(0, 4))
+            t.bind("<Button-1>", lambda _e, tb=tab: self.show_tab(tb))
+            if ADMIN and tab != positions.GENERAL:
+                t.bind("<Button-3>", lambda e, tb=tab: self.tab_menu(tb, e))
+        if ADMIN:
+            plus = tk.Label(self.tabs_bar, text="＋ Tab", bg=NAV, fg=INK_DIM, font=STATUS_FONT + ("bold",), padx=8,
+                            pady=3, cursor="hand2")
+            plus.pack(side="left")
+            plus.bind("<Button-1>", lambda _e: self.ask_text("New tab", "Name the tab (for example: Solo, 4 people):", "",
+                                                             lambda name: self.call(lambda b: b.add_tab(name),
+                                                                                    then=lambda made: self.show_tab(made))))
+
+    def show_tab(self, tab):
+        self.tab = tab
+        self.rebuild(self.scenes)
+
+    def tab_menu(self, tab, event):
+        m = self.menu()
+        m.add_command(label="Rename tab…", command=lambda: self.ask_text(
+            "Rename tab", "New name:", tab, lambda new: self.call(lambda b: b.rename_tab(tab, new),
+                                                                   then=lambda made: self.show_tab(made))))
+        m.add_command(label="Delete tab (its layouts go back to General)", command=lambda: self.call(
+            lambda b: b.delete_tab(tab), then=lambda _: self.say(f"Tab {tab} deleted")))
+        m.tk_popup(event.x_root, event.y_root)
+
+    def menu(self):
+        return tk.Menu(self.root, tearoff=0, bg=KEY, fg=INK, activebackground=LIT, activeforeground=LIT_INK,
+                       font=STATUS_FONT, bd=0)
+
+    MARKERS = (("Blue", "#4DA3FF"), ("Green", "#46D39A"), ("Magenta", "#D06BFF"), ("Yellow", "#F2C14E"),
+               ("Orange", "#FF8B3D"), ("Red", "#FF3D4F"), ("Teal", "#18D2B5"), ("Gray", "#6C7888"))
+
+    def layout_menu(self, name, event):
+        """A layout's menu (⋯ or right-click): rename, start on it, default background, tab, color, reset
+        its cameras, delete."""
+        x, y = event.x_root, event.y_root
+
+        def show(info):
+            m = self.menu()
+            m.add_command(label=name, state="disabled")
+            m.add_command(label="Rename…", command=lambda: self.ask_text(
+                "Rename layout", "New name (OBS's scene is renamed too):", name,
+                lambda new: self.call(lambda b: b.rename_layout(name, new), then=lambda made: self.say(f"Renamed to {made}"))))
+            m.add_command(label=("✓  " if info["start"] else "") + "Start on this layout", command=lambda: self.call(
+                lambda b: b.set_start_layout("" if info["start"] else name),
+                then=lambda _: self.say("The deck won't switch layouts when it opens" if info["start"]
+                                        else f"The deck opens on {name}")))
+            if info["background"]:
+                bgs = self.menu()
+                bgs.add_command(label=("✓  " if not info["default"] else "     ") + "None", command=lambda: self.call(
+                    lambda b: b.set_layout_bgs(name, default=""), then=lambda _: self.say("Saved")))
+                for pic in info["pictures"]:
+                    bgs.add_command(label=("✓  " if pic == info["default"] else "     ") + os.path.splitext(pic)[0],
+                                    command=lambda p=pic: self.call(lambda b: b.set_layout_bgs(name, default=p),
+                                                                    then=lambda _: self.say("Default background saved")))
+                m.add_cascade(label="Default background", menu=bgs)
+            tabs = self.menu()
+            here = self.meta["tab"].get(name, positions.GENERAL)
+            for tab in self.meta["tabs"]:
+                tabs.add_command(label=("✓  " if tab == here else "     ") + tab, command=lambda tb=tab: self.call(
+                    lambda b: b.set_layout_tab(name, tb), then=lambda _: self.say(f"{name} moved to {tb}")))
+            m.add_cascade(label="Tab", menu=tabs)
+            colors = self.menu()
+            mine = self.meta["color"].get(name, "")
+            colors.add_command(label=("✓  " if not mine else "     ") + "Automatic (by kind)", command=lambda: self.call(
+                lambda b: b.set_layout_color(name, "")))
+            for label, hexcode in self.MARKERS:
+                colors.add_command(label=("✓  " if mine == hexcode else "■  ") + label, foreground=hexcode,
+                                   command=lambda h=hexcode: self.call(lambda b: b.set_layout_color(name, h)))
+            m.add_cascade(label="Color", menu=colors)
+            m.add_command(label="Save layout as it is now", command=lambda: self.save_layout(name))
+            m.add_command(label="Reset cameras here", command=lambda: self.call(
+                lambda b: b.reset_layout(name), then=lambda _: self.say(f"Cameras in {name} back on their default spots")))
+            m.add_separator()
+            m.add_command(label="Delete layout…", foreground=REC, command=lambda: self.delete_layout(name))
+            m.tk_popup(x, y)
+        self.call(lambda b: b.layout_info(name), then=show)
+
+    def save_layout(self, name=None):
+        """Save layout: the live layout (or the one whose ⋯ menu was used) becomes its own default, exactly
+        as it is now, including the background picture."""
+        name = name or self.current
+        if not name:
+            return
+        self.call(lambda b: b.save_layout(name), then=lambda pic: self.say(
+            f"{name} saved as it is now" + (f", with {os.path.splitext(pic)[0]} as its background" if pic else ""),
+            seconds=8))
+
+    def delete_layout(self, name):
+        if not messagebox.askyesno("Podcast Deck", f"Delete the layout {name} from OBS?\n\nRepair layouts won't "
+                                   "bring it back. Settings → Cameras → Bring back deleted layouts will (for the "
+                                   "deck's own layouts).", parent=self.root):
+            return
+        self.call(lambda b: b.delete_layout(name), then=lambda _: self.say(f"{name} deleted"))
+
+    def ask_text(self, title, prompt, initial, done):
+        """A small dark box asking for one line of text. done(text) runs on OK or Enter."""
+        win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
+        win.title(title)
+        win.attributes("-topmost", True)
+        win.transient(self.root)
+        win.resizable(False, False)
+        tk.Label(win, text=prompt, bg=BG, fg=INK, font=STATUS_FONT, anchor="w").pack(fill="x")
+        e = tk.Entry(win, width=34, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+        e.insert(0, initial)
+        e.pack(fill="x", pady=(6, 10), ipady=5)
+        e.focus_set()
+        e.select_range(0, "end")
+        def ok(_e=None):
+            text = e.get().strip()
+            win.destroy()
+            if text:
+                done(text)
+        row = tk.Frame(win, bg=BG)
+        row.pack(fill="x")
+        go = self.small_key(row, "OK", ok)
+        go.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
+        go.pack(side="left")
+        self.small_key(row, "Cancel", win.destroy).pack(side="right")
+        win.bind("<Return>", ok)
+        win.bind("<Escape>", lambda _e: win.destroy())
+
+    def paint_row(self, name, hover=False):
+        """A layout row's look: the live layout is raised with an accent bar; hovering lightens a row."""
+        r = self.buttons.get(name)
+        if not r:
+            return
+        lit = name == self.current
+        bg = KEY if lit else (KEY_HOVER if hover and r["live"] else NAV)
+        for w in (r["row"], r["label"], r["hint"]):
+            w.config(bg=bg)
+        r["bar"].config(bg=LIT if lit else bg)
+        r["label"].config(fg=INK if (lit or r["live"]) else INK_DIM)
+        r["hint"].config(fg=LIT if lit else MUTED)
+        if r["dots"]:                          # the ⋯ menu button shows on hover
+            r["dots"].config(bg=bg, fg=INK_DIM if hover else bg)
 
 
 def welcome(root):
@@ -1084,7 +1517,8 @@ def welcome(root):
         use_config(configfile.load())
         root.unbind("<Return>")
         frame.destroy()
-        Deck(root)
+        deck = Deck(root)
+        root.protocol("WM_DELETE_WINDOW", deck.closing)
 
     def recording():
         clear()
@@ -1143,5 +1577,6 @@ if __name__ == "__main__":
     if cfg is None or (not ADMIN and not getattr(cfg, "INVITE", "")):
         welcome(root)
     else:
-        Deck(root)
+        deck = Deck(root)
+        root.protocol("WM_DELETE_WINDOW", deck.closing)
     root.mainloop()

@@ -21,10 +21,11 @@ import media
 import obsconfig
 import positions
 
-HIDDEN = {"_Sources (don't delete)"}
-NOT_BUILT = "OBS doesn't have the new sources yet. Click Settings → Cameras → Rebuild layouts to add them."
+HIDDEN_LIB = "_Sources (don't delete)"
+HIDDEN = {HIDDEN_LIB}
+NOT_BUILT = "Something the deck made is missing in OBS. Click Settings → Cameras → Repair layouts to put it back."
 OBS_CLOSED = "OBS not reachable. Open OBS; this window connects by itself."
-NOW_SLOT = "podcast_deck.now"                  # {"bg": live background video, "video": Video + Cams title}
+NOW_SLOT = "podcast_deck.now"                  # {"bg": live background video, "video": live Video + Cams video}
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
@@ -71,7 +72,7 @@ class Local:
         self.last_scene = None                 # switching to a layout puts up its default background
         self.webcam_tries = 15                 # polls left to give webcams without a device one (about 30 s)
         self.bg_video = None                   # the live background video, read by OBS's Background Video page
-        self.video_title = None                # what's in the Video + Cams box
+        self.video = None                      # the Video + Cams video, run from the browser control page
         self.now_loaded = False                # both are kept in OBS, so they survive restarts
 
     def client(self):
@@ -115,7 +116,7 @@ class Local:
 
     @_locked
     def rebuild(self):
-        """Settings → Rebuild layouts."""
+        """Settings → Repair layouts: put back anything the deck made, and rebuild the layouts."""
         cl = self.client()
         self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
 
@@ -123,15 +124,24 @@ class Local:
     def state(self):
         cl = self.client()
         scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes)]
-        recording = cl.get_record_status().output_active
+        record = cl.get_record_status()
+        recording = record.output_active
         if not self.checked_layouts:
             self.checked_layouts = True
-            if "Gameplay + Cams" not in scenes:  # a fresh OBS: set everything up without being asked
+            for page in ("Video Panel", "Background Video"):   # load the current player pages
+                try:
+                    cl.press_input_properties_button(page, "refreshnocache")
+                except OBSSDKRequestError:
+                    pass
+            if HIDDEN_LIB not in scenes:       # a fresh OBS: set everything up without being asked
                 self._build(cl)
                 self.note = "Layouts set up in OBS. Pick webcams any time in Settings."
                 scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes)]
             else:
                 self._reset_all(cl)            # a new session starts from the default camera spots
+            start = positions.read(cl, positions.START_LAYOUT, "")
+            if start and start in scenes:      # Start on this layout
+                cl.set_current_program_scene(start)
         if self.webcam_tries > 0:              # OBS can take a moment to list webcams after making a source
             self.webcam_tries -= 1
             if self._pick_webcams(cl):
@@ -152,15 +162,16 @@ class Local:
                 items.append({"name": name, "box": list(positions.item_box(i["sceneItemTransform"]))})
         note, self.note = self.note, None
         return {"scenes": [s for s in scenes if s not in HIDDEN], "current": current,
-                "recording": recording, "full": self._full(cl), "items": items, "canvas": list(self.canvas),
-                "note": note, "now": self._now(cl), "names": positions.read(cl, positions.DISPLAY_NAMES, {})}
+                "recording": recording, "rec_ms": getattr(record, "output_duration", 0), "full": self._full(cl), "items": items, "canvas": list(self.canvas),
+                "note": note, "now": self._now(cl), "meta": self._meta(cl), "names": positions.read(cl, positions.DISPLAY_NAMES, {})}
 
     def _now(self, cl):
         """What's showing: the background (video title or picture name) and the Video + Cams video."""
         if not self.now_loaded:
             self.now_loaded = True
             saved = positions.read(cl, NOW_SLOT, {})
-            self.bg_video, self.video_title = saved.get("bg"), saved.get("video")
+            self.bg_video = saved.get("bg")
+            self.video = saved.get("video") if isinstance(saved.get("video"), dict) else None
         if self.bg_video:
             background = "▶ " + (self.bg_video.get("title") or "video")
         else:
@@ -169,10 +180,10 @@ class Local:
             except OBSSDKRequestError:
                 path = ""
             background = os.path.splitext(os.path.basename(path))[0] if path else "plain color"
-        return {"background": background, "video": self.video_title}
+        return {"background": background, "video": (self.video.get("title") or "video") if self.video else None}
 
     def _save_now(self, cl):
-        positions.write(cl, NOW_SLOT, {"bg": self.bg_video, "video": self.video_title})
+        positions.write(cl, NOW_SLOT, {"bg": self.bg_video, "video": self.video})
 
     @_locked
     def set_bg_video(self, state):
@@ -182,6 +193,16 @@ class Local:
 
     def live_bg(self):
         return self.bg_video
+
+    @_locked
+    def set_video(self, state):
+        """Put a video in the Video + Cams box (or empty it with None). The browser control page runs it."""
+        self.video = bgcontrol.valid_state(state)
+        self._save_now(self.client())
+
+    def live(self, channel):
+        """What OBS's player page for a channel ("bg" or "video") should show right now."""
+        return self.bg_video if channel == "bg" else self.video
 
     def _full(self, cl):
         return bool(positions.read(cl, positions.GUESTS_FULL_CONTROL, False))
@@ -311,6 +332,249 @@ class Local:
                 except OBSSDKRequestError:
                     pass                       # that layout or cam isn't in OBS any more
 
+    # --- Tabs and marker colors for the layout list -------------------------------------------
+    def _meta(self, cl):
+        found = positions.read(cl, positions.LAYOUT_META, {})
+        tabs = [t for t in found.get("tabs", []) if isinstance(t, str) and t != positions.GENERAL]
+        return {"tabs": [positions.GENERAL] + tabs, "tab": found.get("tab", {}), "color": found.get("color", {})}
+
+    def _save_meta(self, cl, meta):
+        positions.write(cl, positions.LAYOUT_META, {"tabs": meta["tabs"][1:], "tab": meta["tab"], "color": meta["color"]})
+
+    @_locked
+    def add_tab(self, name):
+        cl = self.client()
+        meta, name = self._meta(cl), positions.clean_display_name(name)[:24]
+        if not name or name in meta["tabs"]:
+            raise DeckError("Give the tab a new name." if not name else f"There's already a tab called {name}.")
+        meta["tabs"].append(name)
+        self._save_meta(cl, meta)
+        return name
+
+    @_locked
+    def rename_tab(self, old, new):
+        cl = self.client()
+        meta, new = self._meta(cl), positions.clean_display_name(new)[:24]
+        if old == positions.GENERAL or old not in meta["tabs"]:
+            raise DeckError("General can't be renamed.")
+        if not new or new in meta["tabs"]:
+            raise DeckError(f"There's already a tab called {new}." if new else "Give the tab a name.")
+        meta["tabs"][meta["tabs"].index(old)] = new
+        meta["tab"] = {k: (new if v == old else v) for k, v in meta["tab"].items()}
+        self._save_meta(cl, meta)
+        return new
+
+    @_locked
+    def delete_tab(self, name):
+        """Delete a tab. Its layouts go back to General."""
+        cl = self.client()
+        meta = self._meta(cl)
+        if name == positions.GENERAL or name not in meta["tabs"]:
+            raise DeckError("General can't be deleted.")
+        meta["tabs"].remove(name)
+        meta["tab"] = {k: v for k, v in meta["tab"].items() if v != name}
+        self._save_meta(cl, meta)
+
+    @_locked
+    def set_layout_tab(self, layout, tab):
+        cl = self.client()
+        meta = self._meta(cl)
+        if tab not in meta["tabs"]:
+            raise DeckError("That tab doesn't exist any more.")
+        if tab == positions.GENERAL:
+            meta["tab"].pop(layout, None)
+        else:
+            meta["tab"][layout] = tab
+        self._save_meta(cl, meta)
+
+    @_locked
+    def set_layout_color(self, layout, color):
+        """A layout's marker color ("" = automatic, by what kind of layout it is)."""
+        cl = self.client()
+        meta = self._meta(cl)
+        if color:
+            meta["color"][layout] = color
+        else:
+            meta["color"].pop(layout, None)
+        self._save_meta(cl, meta)
+
+    # --- One layout's menu (⋯ / right-click on its row) --------------------------------------
+    def _move_key(self, cl, slot, old, new):
+        found = positions.read(cl, slot, {})
+        if old in found:
+            found[new] = found.pop(old)
+            positions.write(cl, slot, found)
+
+    @_locked
+    def rename_layout(self, old, new):
+        """Rename a layout, in OBS too. Everything kept for it (camera spots, backgrounds, start) follows."""
+        cl = self.client()
+        new = positions.clean_display_name(new)[:40]
+        scenes = [s["sceneName"] for s in cl.get_scene_list().scenes]
+        if not new or new == old:
+            return old
+        if new in scenes or new in HIDDEN:
+            raise DeckError(f"There's already a layout called {new}.")
+        cl.set_scene_name(old, new)
+        renames = positions.read(cl, positions.RENAMES, {})
+        original = next((k for k, v in renames.items() if v == old), old)
+        renames[original] = new
+        positions.write(cl, positions.RENAMES, renames)
+        for slot in (positions.DEFAULTS, positions.LAYOUT_BGS):
+            self._move_key(cl, slot, old, new)
+        for name in self.cfg.CAMS:
+            self._move_key(cl, positions.cam_slot(f"Cam - {name}"), old, new)
+        if positions.read(cl, positions.START_LAYOUT, "") == old:
+            positions.write(cl, positions.START_LAYOUT, new)
+        meta = self._meta(cl)
+        for key in ("tab", "color"):
+            if old in meta[key]:
+                meta[key][new] = meta[key].pop(old)
+        self._save_meta(cl, meta)
+        if self.last_scene == old:
+            self.last_scene = new
+        self.ids.clear()
+        return new
+
+    @_locked
+    def delete_layout(self, name):
+        """Delete a layout from OBS. Repair won't bring it back; Bring back deleted layouts will."""
+        cl = self.client()
+        if name in HIDDEN:
+            raise DeckError("That one holds every source; it can't be deleted.")
+        renames = positions.read(cl, positions.RENAMES, {})
+        original = next((k for k, v in renames.items() if v == name), name)
+        import build_scenes
+        if original in build_scenes.LAYOUTS:   # one the deck builds: remember it was deleted on purpose
+            removed = positions.read(cl, positions.REMOVED, [])
+            positions.write(cl, positions.REMOVED, sorted(set(removed) | {original}))
+        cl.remove_scene(name)
+        found = positions.read(cl, positions.LAYOUT_BGS, {})
+        if found.pop(name, None) is not None:
+            positions.write(cl, positions.LAYOUT_BGS, found)
+        if positions.read(cl, positions.START_LAYOUT, "") == name:
+            positions.write(cl, positions.START_LAYOUT, "")
+        meta = self._meta(cl)
+        meta["tab"].pop(name, None)
+        meta["color"].pop(name, None)
+        self._save_meta(cl, meta)
+        self.ids.clear()
+
+    COPYABLE = ("positionX", "positionY", "rotation", "scaleX", "scaleY", "alignment", "boundsType",
+                "boundsAlignment", "boundsWidth", "boundsHeight", "cropLeft", "cropRight", "cropTop", "cropBottom")
+
+    @_locked
+    def new_layout(self, name, start_from, tab):
+        """＋ New layout: a copy of an existing layout, or (start_from "") the background with every cam side
+        by side. It goes into `tab` and gets usual cam spots, so Reset camera works in it."""
+        import build_scenes
+        cl = self.client()
+        name = positions.clean_display_name(name)[:40]
+        scenes = [s["sceneName"] for s in cl.get_scene_list().scenes]
+        if not name:
+            raise DeckError("Give the layout a name.")
+        if name in scenes or name in HIDDEN:
+            raise DeckError(f"There's already a layout called {name}.")
+        cl.create_scene(name)
+        spots = {}
+        if start_from:
+            for item in cl.get_scene_item_list(start_from).scene_items:   # bottom to top
+                new_id = cl.create_scene_item(name, item["sourceName"], item["sceneItemEnabled"]).scene_item_id
+                t = item["sceneItemTransform"]
+                cl.set_scene_item_transform(name, new_id, {k: t[k] for k in self.COPYABLE if k in t})
+                if item["sourceName"].startswith("Cam - "):
+                    spots[item["sourceName"]] = [round(v) for v in positions.item_box(t)]
+        else:
+            video = cl.get_video_settings()
+            build_scenes.set_canvas(video.base_width, video.base_height)
+            names_on = bool(positions.read(cl, positions.NAME_TAGS, True))
+            for src, x, y, w, h in build_scenes.with_names(build_scenes.backdrop() + build_scenes.cams_split()):
+                tag = src.startswith("Name - ")
+                new_id = cl.create_scene_item(name, src, names_on if tag else True).scene_item_id
+                cl.set_scene_item_transform(name, new_id, positions.tag_transform((x, y, w, h)) if tag
+                                            else positions.box_transform(x, y, w, h, fill=src in build_scenes.FILL))
+                if src.startswith("Cam - "):
+                    spots[src] = [x, y, w, h]
+        defaults = positions.read(cl, positions.DEFAULTS, {})
+        defaults[name] = spots
+        positions.write(cl, positions.DEFAULTS, defaults)
+        if start_from:                          # the copy gets the same default background
+            source_bgs = self._layout_bgs(cl).get(start_from)
+            if source_bgs:
+                found = self._layout_bgs(cl)
+                found[name] = dict(source_bgs)
+                positions.write(cl, positions.LAYOUT_BGS, found)
+        meta = self._meta(cl)
+        if tab in meta["tabs"] and tab != positions.GENERAL:
+            meta["tab"][name] = tab
+            self._save_meta(cl, meta)
+        cl.set_current_program_scene(name)
+        return name
+
+    @_locked
+    def restore_layouts(self):
+        """Settings → Bring back deleted layouts."""
+        cl = self.client()
+        positions.write(cl, positions.REMOVED, [])
+        self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
+
+    @_locked
+    def set_start_layout(self, name):
+        positions.write(self.client(), positions.START_LAYOUT, name or "")
+
+    @_locked
+    def layout_info(self, name):
+        """For a layout's menu: whether it shows a background, its default background, saved pictures,
+        and whether it's the start layout."""
+        cl = self.client()
+        shows_bg = any(i["sourceName"] == "Background" for i in cl.get_scene_item_list(name).scene_items)
+        return {"background": shows_bg, "default": self._layout_bgs(cl).get(name, {}).get("default", ""),
+                "pictures": [os.path.basename(p) for p in media.list_backgrounds()],
+                "start": positions.read(cl, positions.START_LAYOUT, "") == name}
+
+    @_locked
+    def save_layout(self, scene):
+        """Save layout: this layout, exactly as it is now, becomes its default. Every source's position and
+        size, the cameras' default spots, and the background picture showing now. Returns the picture's name,
+        or "" if there wasn't one (a background video can't be saved as a default)."""
+        cl = self.client()
+        saved = positions.read(cl, positions.SAVED_LAYOUTS, {})
+        saved[scene] = {}
+        usual = positions.read(cl, positions.DEFAULTS, {}).get(scene, {})
+        for item in cl.get_scene_item_list(scene).scene_items:
+            src, t = item["sourceName"], item["sceneItemTransform"]
+            saved[scene][src] = {k: t[k] for k in self.COPYABLE if k in t}
+            if src.startswith("Cam - "):
+                box = positions.item_box(t)
+                if src in usual and all(abs(a - b) < 1 for a, b in zip(box, usual[src])):
+                    positions.forget(cl, src, scene)
+                else:
+                    positions.save(cl, src, scene, box)
+        positions.write(cl, positions.SAVED_LAYOUTS, saved)
+        picture = ""
+        if any(i["sourceName"] == "Background" for i in cl.get_scene_item_list(scene).scene_items):
+            path = cl.get_input_settings("Background").input_settings.get("file", "")
+            if path and os.path.dirname(os.path.abspath(path)) != media.BACKGROUNDS and os.path.exists(path):
+                path = media.add_background(path)        # keep a copy with the other saved pictures
+            if path and os.path.exists(path):
+                picture = os.path.basename(path)
+                found = self._layout_bgs(cl)
+                entry = found.setdefault(scene, {"default": "", "extras": []})
+                entry["default"] = picture
+                entry["extras"] = list(dict.fromkeys(entry.get("extras", []) + [picture]))
+                positions.write(cl, positions.LAYOUT_BGS, found)
+        return picture
+
+    @_locked
+    def reset_layout(self, scene):
+        """This layout's cameras back on their default spots."""
+        cl = self.client()
+        for cam in positions.read(cl, positions.DEFAULTS, {}).get(scene, {}):
+            try:
+                self._place(cl, scene, cam, self._default(cl, scene, cam))
+            except OBSSDKRequestError:
+                pass
+
     @_locked
     def reset_all(self):
         """Settings: every camera back on its default spot, in every layout."""
@@ -367,7 +631,30 @@ class Local:
                 layouts.append(name)
         return {"name_tags": bool(positions.read(cl, positions.NAME_TAGS, True)), "layouts": layouts,
                 "pictures": [os.path.basename(p) for p in media.list_backgrounds()],
-                "layout_bgs": self._layout_bgs(cl)}
+                "layout_bgs": self._layout_bgs(cl), "video_idle": self._video_idle(cl)}
+
+    def _video_idle(self, cl):
+        found = positions.read(cl, positions.VIDEO_IDLE, {})
+        return {"text": found.get("text", positions.IDLE_TEXT), "picture": found.get("picture", "")}
+
+    @_locked
+    def video_idle(self):
+        """What the empty Video + Cams box shows: a picture from the backgrounds folder, or a text card."""
+        found = self._video_idle(self.client())
+        if found["picture"] and not os.path.exists(os.path.join(media.BACKGROUNDS, found["picture"])):
+            found["picture"] = ""
+        return found
+
+    @_locked
+    def set_video_idle(self, text=None, picture=None):
+        """Settings → Backgrounds → Empty video box."""
+        cl = self.client()
+        found = self._video_idle(cl)
+        if text is not None:
+            found["text"] = positions.clean_display_name(text.replace("\n", " "))[:32] if text.strip() else ""
+        if picture is not None:
+            found["picture"] = os.path.basename(picture)
+        positions.write(cl, positions.VIDEO_IDLE, found)
 
     @_locked
     def set_name_tags(self, on):
@@ -393,7 +680,7 @@ class Local:
         try:
             cl.set_input_settings(f"Name - {name}", {"text": f" {shown or name} "}, True)
         except OBSSDKRequestError:
-            pass                               # layouts built before name tags: Rebuild layouts adds them
+            pass                               # layouts built before name tags: Repair layouts adds them
         return shown or name
 
     @_locked
@@ -480,18 +767,6 @@ class Local:
     def set_restart(self, on):
         self.client().set_input_settings("Video Panel", {"shutdown": bool(on)}, True)
 
-    @_locked
-    def play_video(self, vid=None, start=0, title=None):
-        """Point player.html at a video (or at nothing) and reload the Video Panel."""
-        cl = self.client()
-        self.video_title = (title or "YouTube video")[:200] if vid else None
-        self._save_now(cl)
-        folder = cl.get_input_settings("Video Panel").input_settings.get("local_file") or ""
-        try:
-            media.write_now_playing(os.path.dirname(folder) or media.APP_DIR, vid, start)
-        except OSError as e:
-            raise DeckError(f"Couldn't update the video box. ({e})") from e
-        cl.press_input_properties_button("Video Panel", "refreshnocache")
 
 
 class Remote:
@@ -554,8 +829,8 @@ class Remote:
     def set_restart(self, on):
         self._do("set_restart", on=on)
 
-    def play_video(self, vid=None, start=0, title=None):
-        self._do("play_video", vid=vid, start=start, title=title)
+    def set_video(self, state):
+        self._do("video", state=state)
 
     def set_bg_video(self, state):
         self._do("bg_video", state=state)

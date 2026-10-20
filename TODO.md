@@ -26,7 +26,10 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] Background ▾ → Add picture…: the picture shows behind Just Us, Video + Cams, and Be Right
         Back, and is still there after restarting OBS.
   - [ ] `ctrl+alt+b` steps through saved pictures, including while a game has focus.
-  - [ ] Play link…: a pasted YouTube link plays in the Video + Cams box, with sound in the recording.
+  - [x] Play link…: a pasted YouTube link plays in the Video + Cams box. (It loads fine as a local file.)
+  - [ ] Play link… opens the browser control page; pause, mute, seek, and Stop video change OBS.
+  - [ ] Closing the deck stops both videos.
+  - [ ] Delete a source in OBS, then Settings → Cameras → Repair layouts: it comes back.
   - [ ] Paste link with a picture link: it downloads and becomes the background.
   - [ ] Paste link with a YouTube link: the browser page opens, nothing changes in OBS until Use as
         background (or Switch), then it plays in the background. Pause, mute, volume, and seek on the
@@ -40,6 +43,12 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] Closing and reopening the deck: cameras start on their default spots again.
   - [ ] Settings: Save camera spots as default, then reopen the deck: they start there. Reset cameras
         to default works. Show names on cams hides and shows the tags.
+  - [ ] New look: OBS and REC pills, color-coded layout rows, Settings → Look switches schemes live.
+  - [ ] A layout's ⋯ menu: rename, start on it, default background, tab, color, reset cameras, delete;
+        Bring back deleted layouts. Tabs: ＋ makes one, right-click renames or deletes.
+  - [ ] Empty Video + Cams box shows the card from Settings → Backgrounds (text or picture).
+  - [ ] ＋ New layout (empty and copy) lands in the current tab. Save layout keeps every source and the
+        background picture through a deck restart and Repair layouts.
   - [ ] Settings → Backgrounds: give Just Us a default and an extra (one uploaded with Add picture…).
         Switching to Just Us puts up the default; Background ▾ lists Just Us's first; ctrl+alt+b flips
         between them.
@@ -61,7 +70,7 @@ Needs at least one other person on another PC.
 - [ ] Guest drags and resizes their camera; it moves in OBS within a moment. They can't grab anyone
       else's.
 - [ ] The guest's layout buttons are greyed out, and Record, Background, and Play link are hidden,
-      until the admin ticks "Guests get full control". Then they all work.
+      until the admin ticks "Guests get full control" (Settings → Guests). Then they all work.
 - [ ] Unticking it takes the controls away again within a couple of seconds.
 - [ ] Settings… → Guests → Remove: the guest's deck stops working right away.
 - [ ] Two people dragging at the same time don't undo each other's moves.

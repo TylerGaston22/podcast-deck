@@ -10,6 +10,14 @@ DEFAULTS = "podcast_deck.default_positions"     # {layout: {cam source: box}}, w
 NAME_TAGS = "podcast_deck.name_tags"            # show names on cams (default on)
 DISPLAY_NAMES = "podcast_deck.display_names"    # {cam name: the name its guest chose to show}
 LAYOUT_BGS = "podcast_deck.layout_backgrounds"  # {layout: {"default": picture file name, "extras": [file names]}}
+RENAMES = "podcast_deck.layout_renames"         # {layout the deck builds: the name it was renamed to}
+REMOVED = "podcast_deck.removed_layouts"        # [layouts the deck builds that were deleted on purpose]
+START_LAYOUT = "podcast_deck.start_layout"      # the layout to switch to when the deck opens
+SAVED_LAYOUTS = "podcast_deck.saved_layouts"    # {layout: {source: transform}}, from Save layout
+LAYOUT_META = "podcast_deck.layout_meta"        # {"tabs": [tab names], "tab": {layout: tab}, "color": {layout: hex}}
+GENERAL = "General"                             # the tab every layout is in unless moved
+VIDEO_IDLE = "podcast_deck.video_idle"          # the empty Video + Cams box: {"text": str, "picture": file name}
+IDLE_TEXT = "Video coming up"
 
 
 def cam_slot(cam):
