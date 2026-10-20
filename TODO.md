@@ -47,6 +47,7 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] A layout's ⋯ menu: rename, start on it, default background, tab, color, reset cameras, delete;
         Bring back deleted layouts. Tabs: ＋ makes one, right-click renames or deletes.
   - [ ] Empty Video + Cams box shows the card from Settings → Backgrounds (text or picture).
+  - [ ] Drag a layout row to reorder; hotkeys follow. Camera boxes fit the webcam's shape.
   - [ ] ＋ New layout (empty and copy) lands in the current tab. Save layout keeps every source and the
         background picture through a deck restart and Repair layouts.
   - [ ] Settings → Backgrounds: give Just Us a default and an extra (one uploaded with Add picture…).

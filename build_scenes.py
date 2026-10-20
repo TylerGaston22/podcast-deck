@@ -249,7 +249,23 @@ def build(cl, log=print, keep_scene=None):
                                                 positions.tag_transform(box))
                 log(f"  kept moved cam  {cam} in {scene}")
 
-    # 4. Layouts saved from the deck (Save layout) come back exactly as they were saved: every source.
+    # 4. Cam boxes take each camera's own shape (a 4:3 webcam gets a 4:3 box), inside its spot.
+    shapes = {}
+    for (scene, src), item_id in item_ids.items():
+        if not src.startswith("Cam - "):
+            continue
+        t = cl.get_scene_item_transform(scene, item_id).scene_item_transform
+        if src not in shapes:
+            shapes[src] = (t.get("sourceWidth"), t.get("sourceHeight"))
+        box = positions.item_box(t)
+        fitted = positions.fit_box(box, *shapes[src])
+        if fitted != box:
+            cl.set_scene_item_transform(scene, item_id, positions.box_transform(*fitted))
+            if (scene, positions.tag_name(src)) in item_ids:
+                cl.set_scene_item_transform(scene, item_ids[scene, positions.tag_name(src)],
+                                            positions.tag_transform(fitted))
+
+    # 5. Layouts saved from the deck (Save layout) come back exactly as they were saved: every source.
     for scene, saved in positions.read(cl, positions.SAVED_LAYOUTS, {}).items():
         for src, transform in saved.items():
             if (scene, src) in item_ids:

@@ -70,6 +70,7 @@ class Local:
         self.rebuild_waiting = False           # a guest's camera arrived mid-recording; rebuild after
         self.note = None                       # something the window should mention once
         self.last_scene = None                 # switching to a layout puts up its default background
+        self.shapes = {}                       # cam source → its camera's (width, height), to fit boxes to it
         self.webcam_tries = 15                 # polls left to give webcams without a device one (about 30 s)
         self.bg_video = None                   # the live background video, read by OBS's Background Video page
         self.video = None                      # the Video + Cams video, run from the browser control page
@@ -157,6 +158,13 @@ class Local:
         items = []
         for i in cl.get_scene_item_list(current).scene_items:
             name = i["sourceName"]
+            t = i["sceneItemTransform"]
+            if name.startswith("Cam - ") and t.get("sourceWidth") and t.get("sourceHeight"):
+                shape = (t["sourceWidth"], t["sourceHeight"])
+                if self.shapes.get(name) not in (None, shape):   # a camera changed shape: refit it everywhere
+                    self.shapes[name] = shape
+                    self._refit(cl, name)
+                self.shapes[name] = shape
             if i["sceneItemEnabled"] and (name.startswith("Cam - ") or name == "Video Panel"):
                 self.ids[current, name] = i["sceneItemId"]
                 items.append({"name": name, "box": list(positions.item_box(i["sceneItemTransform"]))})
@@ -291,7 +299,9 @@ class Local:
         self.client().toggle_record()
 
     def _place(self, cl, scene, cam, box):
-        """Move a camera, looking its id up again if the layouts were rebuilt since it was cached."""
+        """Move a camera, looking its id up again if the layouts were rebuilt since it was cached. The box
+        takes the camera's own shape, inside the spot asked for."""
+        box = positions.fit_box(box, *self.shapes.get(cam, (0, 0)))
         for attempt in (1, 2):
             if (scene, cam) not in self.ids:
                 self.ids[scene, cam] = cl.get_scene_item_id(scene, cam).scene_item_id
@@ -336,10 +346,20 @@ class Local:
     def _meta(self, cl):
         found = positions.read(cl, positions.LAYOUT_META, {})
         tabs = [t for t in found.get("tabs", []) if isinstance(t, str) and t != positions.GENERAL]
-        return {"tabs": [positions.GENERAL] + tabs, "tab": found.get("tab", {}), "color": found.get("color", {})}
+        return {"tabs": [positions.GENERAL] + tabs, "tab": found.get("tab", {}), "color": found.get("color", {}),
+                "order": [n for n in found.get("order", []) if isinstance(n, str)]}
 
     def _save_meta(self, cl, meta):
-        positions.write(cl, positions.LAYOUT_META, {"tabs": meta["tabs"][1:], "tab": meta["tab"], "color": meta["color"]})
+        positions.write(cl, positions.LAYOUT_META, {"tabs": meta["tabs"][1:], "tab": meta["tab"], "color": meta["color"],
+                                                    "order": meta.get("order", [])})
+
+    @_locked
+    def set_order(self, order):
+        """Drag to reorder: the deck's own order for layouts (OBS's scene list stays as it is)."""
+        cl = self.client()
+        meta = self._meta(cl)
+        meta["order"] = [n for n in order if isinstance(n, str)]
+        self._save_meta(cl, meta)
 
     @_locked
     def add_tab(self, name):
@@ -430,6 +450,7 @@ class Local:
         for key in ("tab", "color"):
             if old in meta[key]:
                 meta[key][new] = meta[key].pop(old)
+        meta["order"] = [new if n == old else n for n in meta["order"]]
         self._save_meta(cl, meta)
         if self.last_scene == old:
             self.last_scene = new
@@ -574,6 +595,16 @@ class Local:
                 self._place(cl, scene, cam, self._default(cl, scene, cam))
             except OBSSDKRequestError:
                 pass
+
+    def _refit(self, cl, cam):
+        """Put a camera back on its default spot in every layout, fitted to its new shape."""
+        for scene in positions.read(cl, positions.DEFAULTS, {}):
+            box = self._default(cl, scene, cam)
+            if box:
+                try:
+                    self._place(cl, scene, cam, box)
+                except OBSSDKRequestError:
+                    pass
 
     @_locked
     def reset_all(self):

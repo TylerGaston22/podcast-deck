@@ -269,8 +269,9 @@ class Deck:
     def next_scene(self):
         if not self.scenes or not self.can_control():
             return
-        i = self.scenes.index(self.current) if self.current in self.scenes else -1
-        self.switch(self.scenes[(i + 1) % len(self.scenes)])
+        order = self.ordered(self.scenes)      # the deck's own order, as dragged
+        i = order.index(self.current) if self.current in order else -1
+        self.switch(order[(i + 1) % len(order)])
 
     # --- Talking to OBS (admin) or the admin's deck (guests) ----------------
     def call(self, fn, then=None, quiet=False):
@@ -1248,6 +1249,11 @@ class Deck:
                 self.say("Full control turned off: you can move your own camera")
         self.set_control_hotkeys(full)
 
+    def ordered(self, scenes):
+        """Layouts in the order they were dragged into; new ones go at the end, in OBS's order."""
+        order = [n for n in self.meta.get("order", []) if n in scenes]
+        return order + [n for n in scenes if n not in order]
+
     def rebuild(self, scenes):
         """The tab strip, then one row per layout in the current tab: a color marker, its name, a ⋯ menu
         (admin), and its hotkey. The live one is lit. Hotkeys follow OBS's order, whatever tab is showing."""
@@ -1259,7 +1265,7 @@ class Deck:
             keyboard.remove_hotkey(hk)
         self.hotkeys, self.buttons = [], {}
         live = self.can_control()
-        for i, name in enumerate(scenes, start=1):
+        for i, name in enumerate(self.ordered(scenes), start=1):
             if i <= 9 and live:
                 self.hotkeys.append(keyboard.add_hotkey(
                     f"{cfg.HOTKEY_PREFIX}{i}", lambda n=name: self.root.after(0, self.switch, n)))
@@ -1283,8 +1289,10 @@ class Deck:
                 dots.bind("<Button-1>", lambda e, n=name: self.layout_menu(n, e) or "break")
             self.buttons[name] = {"row": row, "bar": bar, "label": label, "hint": hint, "dots": dots, "live": live}
             for w in (row, label, hint, chip) + ((dots,) if dots else ()):
-                if live and w is not dots:
-                    w.bind("<Button-1>", lambda _e, n=name: self.switch(n))
+                if live and w is not dots:     # click switches; press and drag moves the row
+                    w.bind("<ButtonPress-1>", lambda e, n=name: self.row_press(n, e))
+                    w.bind("<B1-Motion>", lambda e, n=name: self.row_drag(n, e))
+                    w.bind("<ButtonRelease-1>", lambda e, n=name: self.row_release(n, e))
                 w.bind("<Enter>", lambda _e, n=name: self.paint_row(n, hover=True))
                 w.bind("<Leave>", lambda _e, n=name: self.paint_row(n))
                 if ADMIN:
@@ -1334,6 +1342,47 @@ class Deck:
         self.small_key(row, "Cancel", win.destroy).pack(side="right")
         win.bind("<Return>", create)
         win.bind("<Escape>", lambda _e: win.destroy())
+
+    # Drag a layout row to reorder (admin). A plain click still switches to it.
+    def row_press(self, name, e):
+        self.row_drag_state = {"name": name, "y": e.y_root, "moving": False, "line": None}
+
+    def row_target(self, y_root):
+        """Where a dragged row would land: the index among the rows showing."""
+        rows = [r["row"] for r in self.buttons.values()]
+        return sum(1 for r in rows if r.winfo_rooty() + r.winfo_height() / 2 < y_root)
+
+    def row_drag(self, name, e):
+        d = getattr(self, "row_drag_state", None)
+        if not d or not ADMIN or abs(e.y_root - d["y"]) < 6:
+            return
+        d["moving"] = True
+        rows = [r["row"] for r in self.buttons.values()]
+        i = self.row_target(e.y_root)
+        y = (rows[i].winfo_y() - 2) if i < len(rows) else (rows[-1].winfo_y() + rows[-1].winfo_height())
+        if d["line"] is None:
+            d["line"] = tk.Frame(self.grid, bg=LIT, height=3)
+        d["line"].place(x=0, y=max(0, y), relwidth=1)
+        d["line"].lift()
+
+    def row_release(self, name, e):
+        d, self.row_drag_state = getattr(self, "row_drag_state", None), None
+        if not d or not d["moving"]:
+            self.switch(name)
+            return
+        if d["line"] is not None:
+            d["line"].destroy()
+        showing = list(self.buttons)
+        i = self.row_target(e.y_root)
+        before = showing[i] if i < len(showing) else None
+        order = [n for n in self.ordered(self.scenes) if n != name]
+        if before == name:
+            return
+        order.insert(order.index(before) if before in order else
+                     (order.index(showing[-1]) + 1 if showing[-1] in order else len(order)), name)
+        self.meta["order"] = order
+        self.rebuild(self.scenes)
+        self.call(lambda b: b.set_order(order), then=lambda _: self.say(f"{name} moved"))
 
     def draw_tabs(self):
         """General, your own tabs, and ＋ (admin) to make another. Right-click a tab to rename or delete it."""

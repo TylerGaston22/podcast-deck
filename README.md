@@ -250,8 +250,12 @@ anyone's camera; click one to select it. Guests can only drag their own.
 
 **Layouts** are color-coded by kind: blue for game, green for talking, magenta for video, yellow for
 breaks, gray for your own scenes. The live one has an accent bar. Tabs above the list (**General**, plus
-tabs you add with **＋**) keep them sorted; right-click a tab to rename or delete it. Hotkeys follow OBS's
-order whatever tab is showing.
+tabs you add with **＋ Tab**) keep them sorted; right-click a tab to rename or delete it. Drag a row up or
+down to reorder (admin); the hotkeys and the mouse's next-layout button follow that order, whatever tab is
+showing.
+
+**Cameras fit themselves:** each camera's box takes the camera's own shape inside its spot (a 4:3 webcam
+gets a 4:3 box), so OBS shows no gaps beside it. If a camera changes shape, its boxes are refitted.
 
 **Save layout** (under the screen map, admin only) saves the live layout exactly as it is now as its
 default: every source's position and size (moved on the map or in OBS), the cameras' spots, and the
@@ -548,6 +552,7 @@ Ideas welcome: open an issue.
   background, tab, color, reset cameras, delete. Bring back deleted layouts in Settings.
 - The empty Video + Cams box shows a card ("Video coming up", or a picture), set in Settings → Backgrounds.
 - ＋ New layout (empty, or a copy of another) and Save layout (every source, plus the background picture).
+- Drag layouts to reorder them; camera boxes fit each camera's real shape.
 
 **Browser-controlled Video + Cams video, and Repair**
 

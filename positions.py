@@ -66,6 +66,20 @@ def clean_display_name(text):
     return " ".join("".join(ch if ch.isprintable() else " " for ch in text).split())[:32]
 
 
+def fit_box(box, source_w, source_h):
+    """The biggest box with the camera's own shape that fits inside `box`, centered. A 4:3 webcam in a
+    16:9 spot gets a 4:3 box, so OBS shows no gaps beside it. Unknown shapes leave the box as it is."""
+    x, y, w, h = box
+    if not source_w or not source_h or not w or not h:
+        return box
+    aspect = source_w / source_h
+    if w / h > aspect:                         # spot is wider than the camera: narrow it
+        nw = h * aspect
+        return x + (w - nw) / 2, y, nw, h
+    nh = w / aspect                            # spot is taller than the camera: shorten it
+    return x, y + (h - nh) / 2, w, nh
+
+
 def tag_name(cam):
     """The name tag source that goes with a cam: "Cam - Host 1" → "Name - Host 1"."""
     return "Name - " + cam.removeprefix("Cam - ")
