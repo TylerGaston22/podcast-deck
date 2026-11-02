@@ -56,6 +56,36 @@ Nothing has been run against real OBS yet. Do this before building anything new.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
 
+## Test on a fresh PC
+
+Checks that the deck works for a new person, not just on the PC it was built on. Use a laptop or any
+Windows PC that has never run the deck.
+
+- [ ] Install OBS from obsproject.com, open it once, close it.
+- [ ] Clone the repo (or Code → Download ZIP) into `C:\Users\<you>\source\repos\podcast-deck` and run
+      Install.bat: Python and add-ons install, the desktop shortcut appears, the deck opens.
+- [ ] I'm recording → names → Start, then open OBS: the deck turns on OBS's remote control by itself
+      (fresh OBS, no password set), connects, and builds all seven layouts.
+- [ ] Layouts fit the canvas on a 1080p screen (the desktop was 4K).
+- [ ] A different webcam is picked automatically and shows in 16:9.
+- [ ] Without the backgrounds folder or config.py: the deck still starts, and Background shows a clear
+      "no pictures yet" state instead of an error.
+- [ ] Run the rest of "Test against real OBS" above and note anything that differs from the desktop.
+
+## Automated tests
+
+A pretend OBS saved in the repo so anyone (including Claude in the cloud) can check the deck without
+OBS. It catches broken layouts and buttons early, but doesn't replace testing in real OBS.
+
+- [ ] Add a mock OBS (a small fake obs-websocket server) under `tests/`.
+- [ ] Tests that `build_scenes.py` builds all seven layouts with sources inside the canvas, at 1080p and 4K.
+- [ ] Tests that layout switching, Record, Background, Play link, Repair layouts, and Bring back deleted
+      layouts send the right requests.
+- [ ] Tests for guest permissions: a guest can only move their own camera, and layout control follows
+      "Guests get full control".
+- [ ] One command to run them all (`py -m pytest`), and a note in the README.
+- [ ] Run them on GitHub on every push (GitHub Actions, Windows runner).
+
 ## Test with hosts online
 
 Needs at least one other person on another PC.
