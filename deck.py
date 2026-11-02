@@ -332,14 +332,19 @@ class Deck:
     def set_control_hotkeys(self, on):
         for hk in self.control_hotkeys:
             keyboard.remove_hotkey(hk)
-        self.control_hotkeys = [
-            keyboard.add_hotkey(cfg.RECORD_HOTKEY, lambda: self.root.after(0, self.toggle_record)),
-            keyboard.add_hotkey(BACKGROUND_HOTKEY, lambda: self.root.after(0, self.next_background)),
-        ] if on else []
+        self.control_hotkeys = []
+        if not on:
+            return
+        for combo, fn in ((cfg.RECORD_HOTKEY, self.toggle_record), (BACKGROUND_HOTKEY, self.next_background)):
+            if combo:                          # "" turns a hotkey off (Settings → Hotkeys → Clear)
+                try:
+                    self.control_hotkeys.append(keyboard.add_hotkey(combo, lambda f=fn: self.root.after(0, f)))
+                except ValueError:
+                    self.say(f"The hotkey {combo} isn't valid. Change it in Settings → Hotkeys.", 10)
 
     # --- Settings -----------------------------------------------------------
     def settings_box(self, tab=None):
-        """Admin: tabs for Cameras, Backgrounds, Guests, and Help. Guest: change invite, and Help."""
+        """Admin: tabs for Cameras, Backgrounds, Guests, Hotkeys, Help, and Look. Guest: You, Hotkeys, Help, Look."""
         win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
         win.title("Settings")
         win.attributes("-topmost", True)
@@ -455,6 +460,14 @@ class Deck:
             heading(you_page, "Invite")
             note(you_page, "Got a new invite from the admin? Copy it, then click Paste invite.")
             self.small_key(you_page, "Paste invite", lambda: self.paste_invite(win)).pack(anchor="w", pady=(4, 0))
+
+        keys_page = page("Hotkeys")
+        heading(keys_page, "Hotkeys", first=True)
+        note(keys_page, "They work even while a game has focus. Click Change…, then press the keys you want (Esc "
+                        "cancels). On this PC only. Layouts you haven't changed use their place in the list.")
+        hotkeys = tk.Frame(keys_page, bg=BG)
+        hotkeys.pack(fill="x", pady=(8, 0))
+        self.fill_hotkeys(hotkeys)
 
         help_page = page("Help")
         heading(help_page, "Help", first=True)
@@ -1197,7 +1210,7 @@ class Deck:
             self.items = state["items"]
             self.draw_map()
         rec_txt = "Recording" if self.recording else "Not recording"
-        if self.recording and self.can_control():
+        if self.recording and self.can_control() and cfg.RECORD_HOTKEY:
             rec_txt += f" ({cfg.RECORD_HOTKEY})"
         if time.monotonic() >= self.notice_until:
             self.status.config(text=f"{self.current}  ·  {rec_txt}")
@@ -1240,7 +1253,8 @@ class Deck:
 
     def rebuild(self, scenes):
         """The tab strip, then one row per layout in the current tab: a color marker, its name, a ⋯ menu
-        (admin), and its hotkey. The live one is lit. Hotkeys follow OBS's order, whatever tab is showing."""
+        (admin), and + for its panel. The live one is lit. Hotkeys (shown in the panel) follow the deck's order,
+        whatever tab is showing, unless changed in Settings → Hotkeys."""
         self.scenes = scenes
         self.draw_tabs()
         for w in self.grid.winfo_children():
@@ -1249,10 +1263,14 @@ class Deck:
             keyboard.remove_hotkey(hk)
         self.hotkeys, self.buttons = [], {}
         live = self.can_control()
-        for i, name in enumerate(self.ordered(scenes), start=1):
-            if i <= 9 and live:
-                self.hotkeys.append(keyboard.add_hotkey(
-                    f"{cfg.HOTKEY_PREFIX}{i}", lambda n=name: self.root.after(0, self.switch, n)))
+        keys = self.layout_hotkeys()
+        if live:
+            for name, combo in keys.items():
+                try:
+                    self.hotkeys.append(keyboard.add_hotkey(combo, lambda n=name: self.root.after(0, self.switch, n)))
+                except ValueError:             # a hotkey typed by hand into config.py that isn't valid
+                    self.say(f"The hotkey for {name} ({combo}) isn't valid. Change it in Settings → Hotkeys.", 10)
+        for name in self.ordered(scenes):
             if self.meta["tab"].get(name, positions.GENERAL) != self.tab:
                 continue
             row = tk.Frame(self.grid, bg=NAV, cursor="hand2" if live else "arrow")
@@ -1264,22 +1282,19 @@ class Deck:
             chip.pack(side="left", padx=(10, 10))
             label = tk.Label(row, text=name, bg=NAV, fg=INK if live else INK_DIM, font=ROW_FONT, anchor="w")
             label.pack(side="left", fill="x", expand=True, pady=3)
-            hint = tk.Label(row, text=f"{cfg.HOTKEY_PREFIX}{i}" if i <= 9 and live else "", bg=NAV, fg=MUTED,
-                            font=HINT_FONT)
             toggle = None
             if live:                           # + opens this layout's panel (switching to it), − closes it
                 toggle = tk.Label(row, text="−" if name == self.open_layout else "+", bg=NAV, fg=INK_DIM,
                                   font=FONT, cursor="hand2", width=2)
                 toggle.pack(side="right", padx=(0, 6))
                 toggle.bind("<Button-1>", lambda _e, n=name: self.toggle_panel(n) or "break")
-            hint.pack(side="right", padx=(4, 4 if live else 10))
             dots = tk.Label(row, text="⋯", bg=NAV, fg=NAV, font=FONT, cursor="hand2") if ADMIN else None
             if dots:
                 dots.pack(side="right")
                 dots.bind("<Button-1>", lambda e, n=name: self.layout_menu(n, e) or "break")
-            self.buttons[name] = {"row": row, "bar": bar, "label": label, "hint": hint, "dots": dots, "live": live,
+            self.buttons[name] = {"row": row, "bar": bar, "label": label, "dots": dots, "live": live,
                                   "toggle": toggle}
-            for w in (row, label, hint, chip) + ((dots,) if dots else ()) + ((toggle,) if toggle else ()):
+            for w in (row, label, chip) + ((dots,) if dots else ()) + ((toggle,) if toggle else ()):
                 if live and w not in (dots, toggle):   # click switches; press and drag moves the row
                     w.bind("<ButtonPress-1>", lambda e, n=name: self.row_press(n, e))
                     w.bind("<B1-Motion>", lambda e, n=name: self.row_drag(n, e))
@@ -1428,7 +1443,7 @@ class Deck:
             m.add_command(label=name, state="disabled")
             m.add_command(label="Rename…", command=lambda: self.ask_text(
                 "Rename layout", "New name (OBS's scene is renamed too):", name,
-                lambda new: self.call(lambda b: b.rename_layout(name, new), then=lambda made: self.say(f"Renamed to {made}"))))
+                lambda new: self.call(lambda b: b.rename_layout(name, new), then=lambda made: self.renamed(name, made))))
             m.add_command(label=("✓  " if info["start"] else "") + "Start on this layout", command=lambda: self.call(
                 lambda b: b.set_start_layout("" if info["start"] else name),
                 then=lambda _: self.say("The deck won't switch layouts when it opens" if info["start"]
@@ -1463,6 +1478,14 @@ class Deck:
             m.add_command(label="Delete layout…", foreground=REC, command=lambda: self.delete_layout(name))
             m.tk_popup(x, y)
         self.call(lambda b: b.layout_info(name), then=show)
+
+    def renamed(self, old, new):
+        """A layout was renamed: its own hotkey (Settings → Hotkeys) goes with it."""
+        mine = dict(getattr(cfg, "LAYOUT_HOTKEYS", {}) or {})
+        if old in mine:
+            mine[new] = mine.pop(old)
+            self.save_hotkeys(layouts=mine)
+        self.say(f"Renamed to {new}")
 
     def save_layout(self, name=None):
         """Save layout: the live layout (or the one whose ⋯ menu was used) becomes its own default, exactly
@@ -1515,15 +1538,111 @@ class Deck:
             return
         lit = name == self.current
         bg = KEY if lit else (KEY_HOVER if hover and r["live"] else NAV)
-        for w in (r["row"], r["label"], r["hint"]):
+        for w in (r["row"], r["label"]):
             w.config(bg=bg)
         r["bar"].config(bg=LIT if lit else bg)
         r["label"].config(fg=INK if (lit or r["live"]) else INK_DIM)
-        r["hint"].config(fg=LIT if lit else MUTED)
         if r["toggle"]:
             r["toggle"].config(bg=bg, text="−" if name == self.open_layout else "+")
         if r["dots"]:                          # the ⋯ menu button shows on hover
             r["dots"].config(bg=bg, fg=INK_DIM if hover else bg)
+
+    # --- Hotkeys -------------------------------------------------------------
+    def layout_hotkeys(self):
+        """{layout: hotkey}. Each layout's own from Settings → Hotkeys ("" for none), otherwise
+        HOTKEY_PREFIX + its place in the list (1–9). A default that's taken by a hotkey of your own is skipped."""
+        mine = getattr(cfg, "LAYOUT_HOTKEYS", {}) or {}
+        taken = {k for k in mine.values() if k} | {cfg.RECORD_HOTKEY, BACKGROUND_HOTKEY}
+        found = {}
+        for i, name in enumerate(self.ordered(self.scenes), start=1):
+            if name in mine:
+                combo = mine[name]
+            else:
+                combo = f"{cfg.HOTKEY_PREFIX}{i}" if i <= 9 else ""
+                combo = "" if combo in taken else combo
+            if combo:
+                found[name] = combo
+        return found
+
+    def save_hotkeys(self, layouts=None, record=None, background=None):
+        """Settings → Hotkeys: remember them in config.py on this PC, and use them straight away."""
+        global BACKGROUND_HOTKEY
+        values = {}
+        if layouts is not None:
+            cfg.LAYOUT_HOTKEYS = values["LAYOUT_HOTKEYS"] = layouts
+        if record is not None:
+            cfg.RECORD_HOTKEY = values["RECORD_HOTKEY"] = record
+        if background is not None:
+            BACKGROUND_HOTKEY = cfg.BACKGROUND_HOTKEY = values["BACKGROUND_HOTKEY"] = background
+        configfile.update(**values)
+        self.set_control_hotkeys(self.can_control())
+        self.rebuild(self.scenes)
+        self.refresh_panel()
+
+    def fill_hotkeys(self, frame):
+        """Settings → Hotkeys: one row per layout, plus Record and Next background. Change… listens for the
+        next keys pressed; Clear turns that hotkey off; Default goes back to the usual one."""
+        for w in frame.winfo_children():
+            w.destroy()
+        keys = self.layout_hotkeys()
+        mine = dict(getattr(cfg, "LAYOUT_HOTKEYS", {}) or {})
+        rows = [(name, keys.get(name, ""), name in mine) for name in self.ordered(self.scenes)]
+        rows += [("● Record", cfg.RECORD_HOTKEY, cfg.RECORD_HOTKEY != "ctrl+alt+r"),
+                 ("Next background", BACKGROUND_HOTKEY, BACKGROUND_HOTKEY != "ctrl+alt+b")]
+        # Hotkeys you set yourself can't be shared. A layout's usual hotkey just gives way to one of yours.
+        in_use = {combo: name for name, combo in mine.items() if combo}
+        in_use.update({cfg.RECORD_HOTKEY: "● Record", BACKGROUND_HOTKEY: "Next background"})
+        in_use.pop("", None)
+
+        def put(name, combo):
+            if name == "● Record":
+                self.save_hotkeys(record=combo if combo is not None else "ctrl+alt+r")
+            elif name == "Next background":
+                self.save_hotkeys(background=combo if combo is not None else "ctrl+alt+b")
+            else:
+                if combo is None:
+                    mine.pop(name, None)
+                else:
+                    mine[name] = combo
+                self.save_hotkeys(layouts=mine)
+            self.fill_hotkeys(frame)
+
+        def listen(name, button):
+            button.config(text="Press the keys…", bg=LIT, fg=LIT_INK)
+            for hk in self.hotkeys + self.control_hotkeys:   # so pressing one doesn't also switch layout
+                keyboard.remove_hotkey(hk)
+            self.hotkeys, self.control_hotkeys = [], []
+
+            def work():
+                combo = keyboard.read_hotkey(suppress=False)
+                self.root.after(0, done, combo)
+
+            def done(combo):
+                other = in_use.get(combo)
+                if combo in ("esc", "escape") or (other and other != name) or not frame.winfo_exists():
+                    if other and other != name:
+                        self.say(f"{combo} is already used by {other}. Clear that one first.", 8)
+                    self.set_control_hotkeys(self.can_control())   # put everything back as it was
+                    self.rebuild(self.scenes)
+                    if frame.winfo_exists():
+                        self.fill_hotkeys(frame)
+                    return
+                put(name, combo)
+                self.say(f"{name}: {combo}")
+            threading.Thread(target=work, daemon=True).start()
+
+        for r, (name, combo, changed) in enumerate(rows):
+            tk.Label(frame, text=name, bg=BG, fg=INK, font=STATUS_FONT, anchor="w").grid(
+                row=r, column=0, sticky="w", pady=2)
+            tk.Label(frame, text=combo or "none", bg=BG, fg=LIT if combo else MUTED, font=HINT_FONT, anchor="w",
+                     width=16).grid(row=r, column=1, sticky="w", padx=(10, 6))
+            change = self.small_key(frame, "Change…", None)
+            change.config(command=lambda n=name, b=change: listen(n, b))
+            change.grid(row=r, column=2, padx=(0, 4))
+            self.small_key(frame, "Clear", lambda n=name: put(n, "")).grid(row=r, column=3, padx=(0, 4))
+            if changed:
+                self.small_key(frame, "Default", lambda n=name: put(n, None)).grid(row=r, column=4)
+        frame.columnconfigure(0, weight=1)
 
     # --- A layout's + panel ------------------------------------------------
     def toggle_panel(self, name):
@@ -1543,7 +1662,8 @@ class Deck:
         something in it changes, so a click isn't lost to the poll."""
         show = (self.open_layout == self.current and self.open_layout in self.buttons and self.can_control())
         has_video = any(i["name"] == "Video Panel" for i in self.items)
-        key = (show and self.open_layout, tuple(sorted(self.now.items())) if show else None, self.pending_bg, has_video)
+        key = (show and self.open_layout, tuple(sorted(self.now.items())) if show else None, self.pending_bg, has_video,
+               show and self.layout_hotkeys().get(self.open_layout))
         if key == self.panel_key and (not show or (self.panel and self.panel.winfo_exists())):
             return
         self.panel_key = key
@@ -1556,7 +1676,8 @@ class Deck:
         panel.pack(fill="x", pady=(0, 1), after=self.buttons[self.open_layout]["row"])
         self.panel = panel
         short = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
-        text = "Background: " + short(self.now.get("background") or "plain color", 24)
+        combo = self.layout_hotkeys().get(self.open_layout)
+        text = (f"Hotkey: {combo}\n" if combo else "") + "Background: " + short(self.now.get("background") or "plain color", 24)
         if self.now.get("video"):
             text += "\n▶ " + short(self.now["video"], 34)
         tk.Label(panel, text=text, bg=NAV, fg=INK_DIM, font=STATUS_FONT, anchor="w", justify="left").pack(fill="x")

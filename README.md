@@ -212,8 +212,11 @@ All three work at the same time, and all of them work while a game has focus.
 | Paste a picture or video for the background | Paste link (in the panel) | — | — |
 | Play a YouTube link | Play link… (in the Video + Cams panel) | — | — |
 
-Hotkey numbers follow the order of the scenes in OBS, and each button in the deck window shows its
-hotkey. The currently active layout is highlighted, and the Record button turns red while recording.
+Hotkey numbers follow the order of the layouts in the deck (drag a row to change it), and each layout's
+**+** panel shows its hotkey. Change any of them, including Record and Next background, in **Settings… →
+Hotkeys**: click **Change…** and press the keys you want, **Clear** to turn one off, or **Default** to go back.
+They're saved on this PC only. The currently active layout is highlighted, and the Record button turns red
+while recording.
 
 **Each layout's panel:** click **+** on a layout to open its panel, and **−** to close it. The live
 layout's panel opens by itself when you switch to it, and only one is open at a time. Opening the panel
@@ -345,6 +348,7 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 | `HOTKEY_PREFIX` | `"ctrl+alt+"` | Layout hotkeys are this plus a number |
 | `RECORD_HOTKEY` | `"ctrl+alt+r"` | Start/stop recording |
 | `BACKGROUND_HOTKEY` | `"ctrl+alt+b"` | Next picture in the `backgrounds` folder |
+| `LAYOUT_HOTKEYS` | `{}` | Your own hotkey per layout, by name (`""` for none). Set in Settings → Hotkeys |
 | `VIDEO_X`, `VIDEO_Y` | `432, 135` | Top-left corner of the video box in Video + Cams |
 | `VIDEO_W`, `VIDEO_H` | `1440, 810` | Size of the video box. Leave room beside it for the cams |
 | `REMOTE_CAMS` | `{}` | Only for adding a VDO.Ninja camera by hand. Guests' cameras are added by themselves |
@@ -418,7 +422,7 @@ Open the deck from the desktop shortcut. The first-launch window writes `config.
 **Hotkeys don't work in a specific game**
 If the game runs as administrator, Windows blocks hotkeys from programs that aren't. Run the deck as
 administrator too (right-click the shortcut → Run as administrator). Also check the game doesn't use
-the same key combo, and change `HOTKEY_PREFIX` if it does.
+the same key combo, and change the clashing hotkey in Settings → Hotkeys if it does.
 
 **Mouse side buttons do nothing**
 Some mouse software (Logitech G Hub, Razer Synapse, and so on) remaps the side buttons. Set them back to
@@ -574,6 +578,11 @@ Ideas welcome: open an issue.
 
 - The desktop shortcut gets the newest version from GitHub each time it opens (when the folder was
   cloned with git), and installs any new add-ons first.
+
+**Hotkeys in the panel, and your own hotkeys**
+
+- Layout rows no longer show their hotkey; it's in each layout's **+** panel.
+- Settings → Hotkeys: change, clear, or reset the hotkey for any layout, Record, and Next background.
 
 **Layout panels and who's in**
 

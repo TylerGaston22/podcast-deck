@@ -58,6 +58,9 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] Picking a picture from Background ▾ in a panel: switch away and back, and it's still there.
   - [ ] Paste link with a video: Video ready / Switch shows in the panel and works.
   - [ ] Who's in: your name shows with a green square under the header.
+  - [ ] Layout rows show no hotkey; the + panel shows it. Settings → Hotkeys: Change… a layout's hotkey
+        and press new keys (pressing them doesn't also switch layout), Clear, Default, and Record /
+        Next background. A hotkey already in use is refused. They still work after reopening the deck.
   - [ ] The desktop shortcut updates the deck: with a new commit on GitHub, opening it brings in the new
         version. Offline, it still opens. A changed requirements.txt installs the new add-ons.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.

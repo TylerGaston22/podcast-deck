@@ -49,10 +49,12 @@ VIDEO_X, VIDEO_Y = 432, 135
 VIDEO_W, VIDEO_H = 1440, 810
 
 # Global hotkeys for deck.py — work even while a game is full screen.
-# Scene N (in OBS order) = HOTKEY_PREFIX + N, e.g. ctrl+alt+1 ... ctrl+alt+9.
+# Layout N (in the deck's order) = HOTKEY_PREFIX + N, e.g. ctrl+alt+1 ... ctrl+alt+9.
 HOTKEY_PREFIX = "ctrl+alt+"
 RECORD_HOTKEY = "ctrl+alt+r"
 BACKGROUND_HOTKEY = "ctrl+alt+b"   # next picture in the backgrounds folder
+# Your own hotkey for a layout, by name ("" for none). Easiest to set in the deck: Settings → Hotkeys.
+LAYOUT_HOTKEYS = {}
 
 # Optional: side buttons on the mouse. "x" = back button, "x2" = forward button,
 # "middle" = scroll-wheel click. Map each to a scene name, or "record" to toggle
