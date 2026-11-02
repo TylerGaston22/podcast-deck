@@ -127,6 +127,8 @@ switching behind controls you can use without leaving the game.
       and drags their own camera around on a screen map. The admin can give guests full control of
       everything else too. Remote cameras come in through VDO.Ninja links.
 - [x] `Podcast Deck.bat` launches the deck with no console window, so it works as a desktop shortcut.
+- [x] The desktop shortcut updates the deck from GitHub each time it opens (when cloned with git), and
+      installs any new add-ons.
 - [x] `build_exe.bat` packages the deck into a single `PodcastDeck.exe` with PyInstaller.
 - [x] Colors and fonts pulled into `theme.py` so the look can be changed in one place.
 - [x] Clear error messages when OBS isn't running, the WebSocket server is off, or `config.py` is
@@ -191,7 +193,8 @@ Bounding Box** so the cams fill their panels instead of letterboxing.
 ## Every session
 
 1. Open OBS.
-2. Double-click **Podcast Deck** on your desktop.
+2. Double-click **Podcast Deck** on your desktop. If the deck folder was cloned with git, the shortcut
+   gets the newest version first; offline, or with files edited in the folder, it just opens as it is.
 3. Pick a layout and click **Record**.
 
 ## Controls
@@ -384,7 +387,7 @@ podcast-deck/
 ├── config.example.py   Template config. Copy to config.py (git-ignored)
 ├── theme.py            Deck window colors and fonts
 ├── requirements.txt    Python dependencies
-├── Podcast Deck.bat    Launches the deck with no console. Target for the desktop shortcut
+├── Podcast Deck.bat    Updates the deck (git pull), then launches it with no console. Desktop shortcut target
 ├── build_exe.bat       Builds dist\PodcastDeck.exe with PyInstaller
 ├── .gitignore          Keeps config.py, build output, and caches out of git
 ├── LICENSE             MIT
@@ -566,6 +569,11 @@ Ideas welcome: open an issue.
 - The empty Video + Cams box shows a card ("Video coming up", or a picture), set in Settings → Backgrounds.
 - ＋ New layout (empty, or a copy of another) and Save layout (every source, plus the background picture).
 - Drag layouts to reorder them; camera boxes fit each camera's real shape.
+
+**Updates itself**
+
+- The desktop shortcut gets the newest version from GitHub each time it opens (when the folder was
+  cloned with git), and installs any new add-ons first.
 
 **Layout panels and who's in**
 

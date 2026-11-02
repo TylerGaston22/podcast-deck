@@ -58,6 +58,8 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] Picking a picture from Background ▾ in a panel: switch away and back, and it's still there.
   - [ ] Paste link with a video: Video ready / Switch shows in the panel and works.
   - [ ] Who's in: your name shows with a green square under the header.
+  - [ ] The desktop shortcut updates the deck: with a new commit on GitHub, opening it brings in the new
+        version. Offline, it still opens. A changed requirements.txt installs the new add-ons.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
 
@@ -146,7 +148,9 @@ Planned features, in priority order. The first two remove the most editing.
       guests. Still in `config.py`: hotkeys, mouse buttons, sizes, and the Discord overlay.
 - [ ] **Auto-updating app (later).** Ship the deck as an installed app that updates itself, so when a
       new version is released, everyone using it gets the update without re-downloading or
-      re-running setup.
+      re-running setup. (Started: the desktop shortcut runs `git pull` each time it opens, for folders
+      cloned with git. Still to do: updates for ZIP downloads, e.g. Install.bat turning the folder into a
+      git clone, or the deck downloading the newest version itself.)
 
 ## Layout templates
 

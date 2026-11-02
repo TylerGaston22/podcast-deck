@@ -12,8 +12,11 @@ Exact steps, in order.
 ## Part A: admin, first time
 
 1. Install **OBS Studio** from https://obsproject.com, open it once, then close it.
-2. On GitHub, click **Code** → **Download ZIP**. Extract it anywhere, for example
-   `C:\Users\<you>\source\repos\podcast-deck`.
+2. Get the deck, for example into `C:\Users\<you>\source\repos\podcast-deck`:
+   - **Best:** clone it with git (`git clone https://github.com/TylerGaston22/podcast-deck`). Then the
+     desktop shortcut updates the deck by itself every time you open it.
+   - **Or:** on GitHub, click **Code** → **Download ZIP** and extract it. To update, download it again and
+     extract it over the old folder (your settings and pictures are kept).
 3. In that folder, double-click **Install.bat**. It installs Python if needed, the deck's add-ons, and
    a **Podcast Deck** shortcut on your desktop, then opens the deck.
 4. In the deck, click **I'm recording (this PC runs OBS)**.
@@ -27,7 +30,8 @@ To change a webcam or pick the browser window for Browser + Cams: **Settings…*
 ## Part B: every session (admin)
 
 1. Open **OBS**.
-2. Double-click **Podcast Deck** on your desktop.
+2. Double-click **Podcast Deck** on your desktop. If the deck was cloned with git, it gets the newest
+   version first (a second or two; if you're offline it just opens).
 3. Click **Record**.
 
 ---
