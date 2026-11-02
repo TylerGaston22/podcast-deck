@@ -17,6 +17,7 @@ import shutil
 import socket
 import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import media
@@ -148,6 +149,24 @@ def who(code):
     return None
 
 
+# --- Who's here ----------------------------------------------------------------
+ONLINE_SECONDS = 10                            # guests' decks check in every couple of seconds
+_seen = {}                                     # guest name → when their deck last checked in
+
+
+def people(cams, admin_name):
+    """Everyone in the group, for the row at the top: [{"name", "online"}], the admin first.
+
+    People at the admin's PC (cams nobody was invited for) are here whenever the admin's deck is.
+    Invited guests are here while their deck keeps checking in.
+    """
+    invites = load_invites()
+    now = time.monotonic()
+    names = list(dict.fromkeys(([admin_name] if admin_name else []) + list(cams) + list(invites)))
+    return [{"name": n, "online": n not in invites or (n in _seen and now - _seen[n] < ONLINE_SECONDS)}
+            for n in names]
+
+
 # --- The door ----------------------------------------------------------------
 class LinkServer:
     """Runs on the admin's deck. Started only if this PC has a Tailscale address."""
@@ -178,7 +197,10 @@ class LinkServer:
                 if ipaddress.ip_address(self.client_address[0]) not in TAILSCALE:
                     return None
                 auth = self.headers.get("Authorization", "")
-                return who(auth.removeprefix("Bearer ").strip())
+                name = who(auth.removeprefix("Bearer ").strip())
+                if name is not None:
+                    _seen[name] = time.monotonic()
+                return name
 
             def do_GET(self):
                 name = self.guest()

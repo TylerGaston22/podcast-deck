@@ -171,7 +171,8 @@ class Local:
         note, self.note = self.note, None
         return {"scenes": [s for s in scenes if s not in HIDDEN], "current": current,
                 "recording": recording, "rec_ms": getattr(record, "output_duration", 0), "full": self._full(cl), "items": items, "canvas": list(self.canvas),
-                "note": note, "now": self._now(cl), "meta": self._meta(cl), "names": positions.read(cl, positions.DISPLAY_NAMES, {})}
+                "note": note, "now": self._now(cl), "meta": self._meta(cl), "names": positions.read(cl, positions.DISPLAY_NAMES, {}),
+                "people": link.people(self.cfg.CAMS, getattr(self.cfg, "ME", ""))}
 
     def _now(self, cl):
         """What's showing: the background (video title or picture name) and the Video + Cams video."""

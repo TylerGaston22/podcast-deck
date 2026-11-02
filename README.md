@@ -204,15 +204,23 @@ All three work at the same time, and all of them work while a game has focus.
 | Next layout | — | — | Back button |
 | Start / stop recording | Click Record | `ctrl+alt+r` | Forward button |
 | Next background picture | — | `ctrl+alt+b` | — (can be set to `"next background"`) |
-| Pick or add a background | Background ▾ | — | — |
-| Paste a picture or video for the background | Paste link | — | — |
-| Play a YouTube link | Play link… | — | — |
+| Open or close a layout's panel | ＋ / − on the layout | — | — |
+| Pick or add a background | Background ▾ (in the panel) | — | — |
+| Paste a picture or video for the background | Paste link (in the panel) | — | — |
+| Play a YouTube link | Play link… (in the Video + Cams panel) | — | — |
 
 Hotkey numbers follow the order of the scenes in OBS, and each button in the deck window shows its
 hotkey. The currently active layout is highlighted, and the Record button turns red while recording.
 
-**Background ▾** lists every saved picture; click one to switch to it, even mid-recording. **Add
-picture…** opens a file picker and copies the picture into the `backgrounds` folder, so it keeps
+**Each layout's panel:** click **+** on a layout to open its panel, and **−** to close it. The live
+layout's panel opens by itself when you switch to it, and only one is open at a time. Opening the panel
+of a layout that isn't live switches to it first, since everything in the panel changes what's showing.
+The panel shows the background and any video that's on, then **Background ▾**, **Paste link**, **Play
+link…** (only on layouts with a video box, like Video + Cams), and **Save layout** (admin).
+
+**Background ▾** lists every saved picture; click one to switch to it, even mid-recording. On the
+admin's deck, the picture you pick also becomes that layout's default, so switching away and back keeps
+it. **Add picture…** opens a file picker and copies the picture into the `backgrounds` folder, so it keeps
 working if the original moves and stays in the menu from then on. **Plain color** turns the picture
 off, and **Open backgrounds folder** lets you add or delete pictures by hand. OBS remembers the
 current picture between sessions.
@@ -221,11 +229,11 @@ current picture between sessions.
 (`https://….png` or `.jpg`), a YouTube link, or a direct video link (`https://….mp4`). Pictures switch
 right away and are saved with your other backgrounds. Videos open a control page in your browser instead:
 play, pause, mute, change the volume, and seek there while nothing changes in the show. When it's ready,
-click **Use as background** on that page (or the small **Switch** button that appears on the deck). From
+click **Use as background** on that page (or the small **Switch** button that appears in the panel). From
 then on, the same page controls the background video live, sound included, and **Stop background video**
 takes it away. Picking a picture from Background ▾ also replaces a background video.
 
-**Now:** under the screen map shows what's on: the background (a picture name, or ▶ and the video's
+The top line of the panel shows what's on: the background (a picture name, or ▶ and the video's
 title) and the video in Video + Cams. The screen map shows the same.
 
 **Play link…** opens a small box. Paste a YouTube link (normal, `youtu.be`, Shorts, or live; a `t=`
@@ -245,8 +253,14 @@ spots. **Reset camera** puts the selected camera back on its default spot. On th
 anyone's camera; click one to select it. Guests can only drag their own.
 
 **The window:** a header with the **OBS** status pill (green when connected, orange when not) and a red
-**REC** pill with the running time while recording; the **LAYOUTS** list; the **SCREEN** map; **MEDIA**;
-**Record**; and a status bar at the bottom for messages.
+**REC** pill with the running time while recording; **who's in** (below); the **LAYOUTS** list, each
+with its **+** panel; the **SCREEN** map; **Record**; and a status bar at the bottom for messages.
+
+**Who's in:** under the header, a small square and name for everyone in the group: green while they're
+connected, gray while they're not. People at the admin's PC are green whenever the admin's deck is open.
+Guests are green while their deck is open and reaching the admin's deck (it checks in every couple of
+seconds, so a guest goes gray about 10 seconds after their deck closes or loses Tailscale). Guests see the
+same row on their deck. Names show the name each person chose for their camera.
 
 **Layouts** are color-coded by kind: blue for game, green for talking, magenta for video, yellow for
 breaks, gray for your own scenes. The live one has an accent bar. Tabs above the list (**General**, plus
@@ -257,7 +271,7 @@ showing.
 **Cameras fit themselves:** each camera's box takes the camera's own shape inside its spot (a 4:3 webcam
 gets a 4:3 box), so OBS shows no gaps beside it. If a camera changes shape, its boxes are refitted.
 
-**Save layout** (under the screen map, admin only) saves the live layout exactly as it is now as its
+**Save layout** (in the layout's panel, admin only) saves the live layout exactly as it is now as its
 default: every source's position and size (moved on the map or in OBS), the cameras' spots, and the
 background picture showing. New sessions and Repair layouts start from it.
 
@@ -276,7 +290,6 @@ Repair layouts won't bring back a layout you deleted on purpose; **Bring back de
   extras. Switching to a layout puts up its default; picking another lasts until you switch layouts or the
   session ends. **Add picture…** saves a picture of your own and adds it to that layout. On a layout with
   extras, Background ▾ lists them first (★ marks the default) and `ctrl+alt+b` steps through just those.
-  Background ▾ also has **Make this the default for …** for the current layout.
 - **Guests**: invites, and the **Guests get full control** switch.
 - **Help**: How it works.
 - **Look**: four color schemes (Stream Launcher, Electric blue, Violet, Teal + orange). It changes right
@@ -553,6 +566,13 @@ Ideas welcome: open an issue.
 - The empty Video + Cams box shows a card ("Video coming up", or a picture), set in Settings → Backgrounds.
 - ＋ New layout (empty, or a copy of another) and Save layout (every source, plus the background picture).
 - Drag layouts to reorder them; camera boxes fit each camera's real shape.
+
+**Layout panels and who's in**
+
+- Each layout has a **+** panel with Background ▾, Paste link, Play link… (layouts with a video box only),
+  and Save layout. The live layout's panel opens by itself; **−** closes it. The MEDIA section is gone.
+- A picture picked from Background ▾ on the admin's deck becomes that layout's default.
+- Who's in: a green or gray square and name for everyone in the group, under the header.
 
 **Browser-controlled Video + Cams video, and Repair**
 

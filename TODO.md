@@ -34,7 +34,7 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] Paste link with a YouTube link: the browser page opens, nothing changes in OBS until Use as
         background (or Switch), then it plays in the background. Pause, mute, volume, and seek on the
         page change it in OBS, with sound in the recording. Stop takes it away.
-  - [ ] "Now:" line and the screen map show the right background and video titles.
+  - [ ] The layout panel's top line and the screen map show the right background and video titles.
   - [ ] A link to a video that blocks embedding shows the "can't be played here" message.
   - [ ] Restart option off: leaving and returning to Video + Cams picks up mid-video. On: it starts over.
   - [ ] Video + Cams: cams sit beside the video box without covering it.
@@ -53,6 +53,11 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] Settings → Backgrounds: give Just Us a default and an extra (one uploaded with Add picture…).
         Switching to Just Us puts up the default; Background ▾ lists Just Us's first; ctrl+alt+b flips
         between them.
+  - [ ] Layout panels: switching layouts opens the live one's panel by itself; − closes it; + on another
+        layout switches to it and opens its panel. Play link… shows only on Video + Cams.
+  - [ ] Picking a picture from Background ▾ in a panel: switch away and back, and it's still there.
+  - [ ] Paste link with a video: Video ready / Switch shows in the panel and works.
+  - [ ] Who's in: your name shows with a green square under the header.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
 
@@ -105,6 +110,8 @@ Needs at least one other person on another PC.
 - [ ] Unticking it takes the controls away again within a couple of seconds.
 - [ ] Settings… → Guests → Remove: the guest's deck stops working right away.
 - [ ] Two people dragging at the same time don't undo each other's moves.
+- [ ] Who's in: the guest's square turns green on both decks when their deck connects, and gray about 10
+      seconds after they close it.
 - [ ] Note in the README how laggy it feels over the internet, and anything else surprising.
 
 ## Try with the real setup

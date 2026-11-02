@@ -108,6 +108,9 @@ class Deck:
         self.last_state = None                 # the last OBS state, to redraw after a color scheme change
         self.meta = {"tabs": [positions.GENERAL], "tab": {}, "color": {}}   # layout tabs and marker colors
         self.tab = positions.GENERAL           # the tab being shown
+        self.open_layout = None                # the layout whose + panel is open (opens by itself when it goes live)
+        self.panel, self.panel_key = None, None
+        self.pending_bg = False                # a pasted background video is waiting for Switch
         root.title("Podcast Deck" if ADMIN else "Podcast Deck · guest")
         root.attributes("-topmost", True)
         root.geometry("320x880" if ADMIN else "320x600")
@@ -136,6 +139,10 @@ class Deck:
         self.obs_pill = self.pill(header, "OBS" if ADMIN else "ADMIN")
         self.obs_pill["frame"].pack(side="right", padx=(4, 12))
         self.rec_pill = self.pill(header, "REC")
+        # Who's in the group: a small square per person, green while they're connected.
+        self.people_row = tk.Frame(root, bg=BG)
+        self.people_row.pack(fill="x", padx=12, pady=(8, 0))
+        self.people_shown = None
 
         # Status bar at the very bottom: what's happening, and messages.
         bar = tk.Frame(root, bg=PANEL)
@@ -174,40 +181,16 @@ class Deck:
         under.pack(fill="x", pady=(6, 0))
         self.reset_button = self.small_key(under, "Reset camera" if ADMIN else "Reset my camera", self.reset_camera)
         self.reset_button.pack(side="left")
-        if ADMIN:
-            self.small_key(under, "Save layout", self.save_layout).pack(side="left", padx=4)
         self.small_key(under, "Settings…", self.settings_box).pack(side="right")
         if not ADMIN:
             start = self.small_key(under, "Start my camera", self.start_camera)
             start.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
             start.pack(side="right", padx=4)
 
-        # Media and Record: always on the admin deck, on guests' only with full control.
+        # Record: always on the admin deck, on guests' only with full control. Background, Paste link, and
+        # Play link are in each layout's + panel.
         self.controls = tk.Frame(bottom, bg=BG)
         self.controls.pack(fill="x")
-        self.section(self.controls, "MEDIA").pack(fill="x", pady=(10, 4))
-        self.now_label = tk.Label(self.controls, text="", bg=BG, fg=INK_DIM, font=STATUS_FONT, anchor="w")
-        self.now_label.pack(fill="x")
-        # A pasted background video waits here until someone switches to it.
-        self.pending_row = tk.Frame(self.controls, bg=BG)
-        tk.Label(self.pending_row, text="Video ready in your browser", bg=BG, fg=LIT,
-                 font=STATUS_FONT, anchor="w").pack(side="left")
-        self.small_key(self.pending_row, "✕", self.hide_pending).pack(side="right")
-        switch = self.small_key(self.pending_row, "Switch", self.switch_background)
-        switch.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
-        switch.pack(side="right", padx=4)
-        extras = tk.Frame(self.controls, bg=BG)
-        extras.pack(fill="x", pady=(6, 0))
-        self.extras = extras
-        # Small, side by side: the background menu, its Paste link box, and the Video + Cams link box.
-        for col, (text, cmd) in enumerate((("Background ▾", self.background_menu), ("Paste link", self.bg_link_box),
-                                          ("Play link…", self.play_link))):
-            b = self.small_key(extras, text, cmd)
-            b.config(padx=6, anchor="center")
-            b.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 3, 0), ipady=6)
-            extras.columnconfigure(col, weight=1)
-            if col == 0:
-                self.bg_button = b
         self.rec = self.key(self.controls, "●  Record", self.toggle_record)
         self.rec.pack(fill="x", pady=(10, 12), ipady=8)
         if not ADMIN and not self.full:
@@ -240,8 +223,8 @@ class Deck:
         cfg.THEME = theme.name
         for w in self.root.winfo_children():
             w.destroy()
-        self.scenes, self.buttons = [], {}     # layout rows are rebuilt on the next draw
-        self.now = {}                          # and the Now line is refilled
+        self.scenes, self.buttons = [], {}     # layout rows, their panel, and who's in are redrawn on the next draw
+        self.panel_key = None
         self.build_ui()
         if self.last_state:
             self.render(self.last_state, None)
@@ -853,10 +836,6 @@ class Deck:
                 for pic in others:
                     item(pic)
                 m.add_separator()
-            if ADMIN and current and current != default and found.get("layout"):
-                m.add_command(label=f"Make this the default for {found['layout']}", command=lambda: self.call(
-                    lambda b: b.make_default(found["current"]),
-                    then=lambda layout: self.say(f"Default background for {layout} saved")))
             if ADMIN:
                 m.add_command(label="Add picture…", command=self.add_background)
             m.add_command(label=("✓  " if not current else "     ") + "Plain color",
@@ -870,8 +849,14 @@ class Deck:
         self.call(lambda b: b.backgrounds(), then=show)
 
     def set_background(self, path):
+        """Show a picture. On the admin's deck it also becomes the live layout's default, so switching away
+        and back keeps it."""
         name = os.path.splitext(os.path.basename(path))[0] if path else "plain color"
-        self.call(lambda b: b.set_background(path), then=lambda _: self.say(f"Background: {name}"))
+
+        def work(b):
+            b.set_background(path)
+            return b.make_default(path) if ADMIN and path else None
+        self.call(work, then=lambda layout: self.say(f"Background: {name}" + (f", saved for {layout}" if layout else "")))
 
     def add_background(self):
         path = filedialog.askopenfilename(
@@ -989,11 +974,13 @@ class Deck:
         """Open the browser control page for a pasted background video."""
         self.bg_preview = None
         if self.open_control("bg", source):
-            self.pending_row.pack(fill="x", padx=12, pady=(6, 0), before=self.extras)
+            self.pending_bg = True
+            self.refresh_panel()
             self.say("Control the video in your browser. It switches when you click Use as background or Switch.", 10)
 
     def hide_pending(self):
-        self.pending_row.pack_forget()
+        self.pending_bg = False
+        self.refresh_panel()
 
     def switch_background(self):
         """The deck's Switch button: put the previewed video in the background, from where the preview is."""
@@ -1187,14 +1174,10 @@ class Deck:
             self.root.title(f"Deck · {self.names.get(you) or you}" if you else "Deck · guest")
         if state.get("note"):
             self.say(state["note"], seconds=10)
-        now = state.get("now") or {}
-        if now != self.now:
-            self.now = now
-            short = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
-            text = "Now: " + short(now.get("background") or "plain color", 22)
-            if now.get("video"):
-                text += "  ·  ▶ " + short(now["video"], 20)
-            self.now_label.config(text=text)
+        self.now = state.get("now") or {}
+        self.draw_people(state.get("people") or [])
+        if state["current"] != self.current:   # a layout went live: its panel opens by itself
+            self.open_layout = state["current"]
         self.canvas = tuple(state["canvas"])
         full = state["full"]
         self.full = full
@@ -1228,6 +1211,7 @@ class Deck:
             self.rec_pill["frame"].pack_forget()
         for name in self.buttons:
             self.paint_row(name)
+        self.refresh_panel()
         self.rec.config(text="■  Stop recording" if self.recording else "●  Record",
                         bg=REC if self.recording else KEY, fg="#FFFFFF" if self.recording else INK,
                         activebackground=REC if self.recording else KEY_HOVER)
@@ -1282,14 +1266,21 @@ class Deck:
             label.pack(side="left", fill="x", expand=True, pady=3)
             hint = tk.Label(row, text=f"{cfg.HOTKEY_PREFIX}{i}" if i <= 9 and live else "", bg=NAV, fg=MUTED,
                             font=HINT_FONT)
-            hint.pack(side="right", padx=(4, 10))
+            toggle = None
+            if live:                           # + opens this layout's panel (switching to it), − closes it
+                toggle = tk.Label(row, text="−" if name == self.open_layout else "+", bg=NAV, fg=INK_DIM,
+                                  font=FONT, cursor="hand2", width=2)
+                toggle.pack(side="right", padx=(0, 6))
+                toggle.bind("<Button-1>", lambda _e, n=name: self.toggle_panel(n) or "break")
+            hint.pack(side="right", padx=(4, 4 if live else 10))
             dots = tk.Label(row, text="⋯", bg=NAV, fg=NAV, font=FONT, cursor="hand2") if ADMIN else None
             if dots:
                 dots.pack(side="right")
                 dots.bind("<Button-1>", lambda e, n=name: self.layout_menu(n, e) or "break")
-            self.buttons[name] = {"row": row, "bar": bar, "label": label, "hint": hint, "dots": dots, "live": live}
-            for w in (row, label, hint, chip) + ((dots,) if dots else ()):
-                if live and w is not dots:     # click switches; press and drag moves the row
+            self.buttons[name] = {"row": row, "bar": bar, "label": label, "hint": hint, "dots": dots, "live": live,
+                                  "toggle": toggle}
+            for w in (row, label, hint, chip) + ((dots,) if dots else ()) + ((toggle,) if toggle else ()):
+                if live and w not in (dots, toggle):   # click switches; press and drag moves the row
                     w.bind("<ButtonPress-1>", lambda e, n=name: self.row_press(n, e))
                     w.bind("<B1-Motion>", lambda e, n=name: self.row_drag(n, e))
                     w.bind("<ButtonRelease-1>", lambda e, n=name: self.row_release(n, e))
@@ -1529,8 +1520,85 @@ class Deck:
         r["bar"].config(bg=LIT if lit else bg)
         r["label"].config(fg=INK if (lit or r["live"]) else INK_DIM)
         r["hint"].config(fg=LIT if lit else MUTED)
+        if r["toggle"]:
+            r["toggle"].config(bg=bg, text="−" if name == self.open_layout else "+")
         if r["dots"]:                          # the ⋯ menu button shows on hover
             r["dots"].config(bg=bg, fg=INK_DIM if hover else bg)
+
+    # --- A layout's + panel ------------------------------------------------
+    def toggle_panel(self, name):
+        """+ opens a layout's panel (switching to it first, since its buttons change what's live); − closes it."""
+        if name == self.open_layout:
+            self.open_layout = None
+        else:
+            self.open_layout = name
+            if name != self.current:
+                self.switch(name)
+        for n in self.buttons:
+            self.paint_row(n)
+        self.refresh_panel()
+
+    def refresh_panel(self):
+        """Draw the open layout's panel under its row, once that layout is live. Only redrawn when
+        something in it changes, so a click isn't lost to the poll."""
+        show = (self.open_layout == self.current and self.open_layout in self.buttons and self.can_control())
+        has_video = any(i["name"] == "Video Panel" for i in self.items)
+        key = (show and self.open_layout, tuple(sorted(self.now.items())) if show else None, self.pending_bg, has_video)
+        if key == self.panel_key and (not show or (self.panel and self.panel.winfo_exists())):
+            return
+        self.panel_key = key
+        if self.panel is not None and self.panel.winfo_exists():
+            self.panel.destroy()
+        self.panel = None
+        if not show:
+            return
+        panel = tk.Frame(self.grid, bg=NAV, padx=10, pady=6)
+        panel.pack(fill="x", pady=(0, 1), after=self.buttons[self.open_layout]["row"])
+        self.panel = panel
+        short = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
+        text = "Background: " + short(self.now.get("background") or "plain color", 24)
+        if self.now.get("video"):
+            text += "\n▶ " + short(self.now["video"], 34)
+        tk.Label(panel, text=text, bg=NAV, fg=INK_DIM, font=STATUS_FONT, anchor="w", justify="left").pack(fill="x")
+        if self.pending_bg:                    # a pasted background video waits here until someone switches to it
+            row = tk.Frame(panel, bg=NAV)
+            row.pack(fill="x", pady=(4, 0))
+            tk.Label(row, text="Video ready", bg=NAV, fg=LIT, font=STATUS_FONT,
+                     anchor="w").pack(side="left")
+            self.small_key(row, "✕", self.hide_pending).pack(side="right")
+            go = self.small_key(row, "Switch", self.switch_background)
+            go.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
+            go.pack(side="right", padx=4)
+        keys = tk.Frame(panel, bg=NAV)
+        keys.pack(fill="x", pady=(6, 0))
+        buttons = [("Background ▾", self.background_menu), ("Paste link", self.bg_link_box)]
+        if has_video:                          # only where there's a video box to play in
+            buttons.append(("Play link…", self.play_link))
+        if ADMIN:
+            buttons.append(("Save layout", self.save_layout))
+        for i, (label, cmd) in enumerate(buttons):
+            b = self.small_key(keys, label, cmd)
+            b.config(padx=6, anchor="center")
+            b.grid(row=i // 2, column=i % 2, sticky="nsew", padx=(0 if i % 2 == 0 else 3, 0), pady=(0 if i < 2 else 3, 0),
+                   ipady=4)
+            if i == 0:
+                self.bg_button = b
+        keys.columnconfigure(0, weight=1)
+        keys.columnconfigure(1, weight=1)
+
+    # --- Who's in -------------------------------------------------------------
+    def draw_people(self, people):
+        """The row under the header: a small square per person, green while connected, gray while not."""
+        shown = [(self.names.get(p["name"]) or p["name"], bool(p["online"])) for p in people]
+        if shown == self.people_shown:
+            return
+        self.people_shown = shown
+        for w in self.people_row.winfo_children():
+            w.destroy()
+        for name, online in shown:
+            tk.Frame(self.people_row, bg=OK if online else MUTED, width=9, height=9).pack(side="left", padx=(0, 5))
+            tk.Label(self.people_row, text=name, bg=BG, fg=INK if online else MUTED, font=STATUS_FONT).pack(
+                side="left", padx=(0, 12))
 
 
 def welcome(root):
