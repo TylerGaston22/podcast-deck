@@ -122,6 +122,17 @@ class Local:
         self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
 
     @_locked
+    def rebuild_soon(self):
+        """Someone was added to or removed from the group: rebuild the layouts with their camera, or once
+        the recording stops, so a recording never jumps."""
+        cl = self.client()
+        if cl.get_record_status().output_active:
+            self.rebuild_waiting = True
+            return "The layouts update as soon as the recording stops."
+        self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
+        return "The layouts are updated."
+
+    @_locked
     def state(self):
         cl = self.client()
         scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes)]
@@ -150,7 +161,7 @@ class Local:
         if self.rebuild_waiting and not recording:
             self.rebuild_waiting = False
             self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
-            self.note = "A guest's camera was added."
+            self.note = "Layouts updated with everyone's cameras."
         current = cl.get_current_program_scene().current_program_scene_name
         if current != self.last_scene:         # however the layout changed (deck, hotkey, guest, OBS itself)
             self.last_scene = current

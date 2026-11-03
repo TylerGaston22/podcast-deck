@@ -17,6 +17,7 @@ The first launch asks one question (recording, or joining?) and writes config.py
 """
 import os
 import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -140,9 +141,10 @@ class Deck:
         self.obs_pill["frame"].pack(side="right", padx=(4, 12))
         self.rec_pill = self.pill(header, "REC")
         # Who's in the group: a small square per person, green while they're connected.
-        self.people_row = tk.Frame(root, bg=BG)
+        self.people_row = tk.Frame(root, bg=BG, height=20)
         self.people_row.pack(fill="x", padx=12, pady=(8, 0))
-        self.people_shown = None
+        self.people_row.bind("<Configure>", lambda _e: self.flow_people())
+        self.people_shown, self.people_items = None, []
 
         # Status bar at the very bottom: what's happening, and messages.
         bar = tk.Frame(root, bg=PANEL)
@@ -195,6 +197,7 @@ class Deck:
         self.rec.pack(fill="x", pady=(10, 12), ipady=8)
         if not ADMIN and not self.full:
             self.controls.pack_forget()
+        self.draw_people([])                   # Invite / Join shows before the first connection
 
     def section(self, parent, text):
         """A small uppercase section label, like the stream launcher's."""
@@ -458,8 +461,8 @@ class Deck:
             self.small_key(row, "Save", save).pack(side="left", padx=6)
 
             heading(you_page, "Invite")
-            note(you_page, "Got a new invite from the admin? Copy it, then click Paste invite.")
-            self.small_key(you_page, "Paste invite", lambda: self.paste_invite(win)).pack(anchor="w", pady=(4, 0))
+            note(you_page, "Got a new code from the admin? Paste it with Invite / Join at the top.")
+            self.small_key(you_page, "Invite / Join…", lambda: (win.destroy(), self.group_box())).pack(anchor="w", pady=(4, 0))
 
         keys_page = page("Hotkeys")
         heading(keys_page, "Hotkeys", first=True)
@@ -659,21 +662,13 @@ class Deck:
         self.say(f"{name}'s invite removed. Their deck can't connect any more.", seconds=8)
         self.fill_guests(rows, on)
 
-    def paste_invite(self, win=None):
-        """Guest: take a new invite from the clipboard and reconnect with it."""
-        try:
-            text = self.root.clipboard_get().strip()
-        except tk.TclError:
-            text = ""
-        if not text.startswith(link.PREFIX):
-            self.tell("There's no invite on the clipboard. Copy the whole invite the admin sent you, then try again.")
-            return
+    def use_invite(self, text):
+        """Guest: save an invite and reconnect with it."""
         configfile.update(INVITE=text)
         cfg.INVITE = text
         self.backend, self.next_link_try = None, 0.0
+        self.people_shown = None
         self.say("Invite saved. Connecting…")
-        if win:
-            win.destroy()
 
     def set_display_name(self, text):
         """Guest: the name shown on your camera. Saved here and sent to the admin's deck."""
@@ -1709,17 +1704,247 @@ class Deck:
 
     # --- Who's in -------------------------------------------------------------
     def draw_people(self, people):
-        """The row under the header: a small square per person, green while connected, gray while not."""
-        shown = [(self.names.get(p["name"]) or p["name"], bool(p["online"])) for p in people]
+        """The row under the header: a small square per person, green while connected, gray while not, and
+        Invite / Join on the right. Admin: click a name for their invite, or to remove them."""
+        shown = [(p["name"], self.names.get(p["name"]) or p["name"], bool(p["online"])) for p in people]
         if shown == self.people_shown:
             return
         self.people_shown = shown
         for w in self.people_row.winfo_children():
             w.destroy()
-        for name, online in shown:
-            tk.Frame(self.people_row, bg=OK if online else MUTED, width=9, height=9).pack(side="left", padx=(0, 5))
-            tk.Label(self.people_row, text=name, bg=BG, fg=INK if online else MUTED, font=STATUS_FONT).pack(
-                side="left", padx=(0, 12))
+        self.people_items = []
+        for name, label, online in shown:
+            item = tk.Frame(self.people_row, bg=BG)
+            square = tk.Frame(item, bg=OK if online else MUTED, width=9, height=9)
+            square.pack(side="left", padx=(0, 5))
+            text = tk.Label(item, text=label, bg=BG, fg=INK if online else MUTED, font=STATUS_FONT)
+            text.pack(side="left", padx=(0, 12))
+            if ADMIN and f"Cam - {name}" != self.me:
+                for w in (item, square, text):
+                    w.config(cursor="hand2")
+                    w.bind("<Button-1>", lambda e, n=name: self.person_menu(n, e))
+                    w.bind("<Button-3>", lambda e, n=name: self.person_menu(n, e))
+            self.people_items.append(item)
+        self.group_button = self.small_key(self.people_row, "Invite / Join", self.group_box)
+        self.group_button.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK, pady=2)
+        self.flow_people()
+
+    def flow_people(self):
+        """Lay out the who's-in row: Invite / Join on the right, names left to right beside it, wrapping onto
+        more lines when the window is narrow."""
+        if getattr(self, "flowing", False):
+            return
+        self.flowing = True
+        try:
+            self.people_row.update_idletasks()   # so new names have their real sizes
+        finally:
+            self.flowing = False
+        width = self.people_row.winfo_width()
+        if width <= 1:                         # not drawn yet: <Configure> calls this again
+            width = self.root.winfo_width() - 24
+        button = getattr(self, "group_button", None)
+        line = 0
+        if button is not None and button.winfo_exists():
+            button.place(relx=1.0, x=0, y=0, anchor="ne")
+            width -= button.winfo_reqwidth() + 8
+            line = button.winfo_reqheight()
+        x = y = 0
+        for item in self.people_items:
+            w, h = item.winfo_reqwidth(), item.winfo_reqheight()
+            if x and x + w > width:
+                x, y = 0, y + line
+                line = 0
+            item.place(x=x, y=y + 4 if y == 0 else y)   # first line: centered on the button
+            x, line = x + w, max(line, h)
+        height = y + line or 20
+        if int(self.people_row.cget("height")) != height:
+            self.people_row.config(height=height)
+
+    def person_menu(self, name, event):
+        """Admin: click someone in the row. Copy their invite, give them a new one, or take them out."""
+        m = self.menu()
+        m.add_command(label=name, state="disabled")
+        invited = name in link.load_invites()
+        m.add_command(label="Copy invite", command=lambda: self.copy_person_invite(name, fresh=False))
+        if invited:
+            m.add_command(label="New invite (the old one stops working)",
+                          command=lambda: self.copy_person_invite(name, fresh=True))
+        m.add_separator()
+        m.add_command(label="Remove from the group…", foreground=REC, command=lambda: self.remove_person(name))
+        m.tk_popup(event.x_root, event.y_root)
+
+    def copy_person_invite(self, name, fresh):
+        """Put someone's invite on the clipboard. Returns it, or None if Tailscale isn't running here."""
+        if not (self.link and self.link.httpd):
+            self.tell("Tailscale isn't running on this PC, so there's no invite to send yet. Start Tailscale, wait "
+                      "ten seconds, and try again.")
+            return None
+        code = link.load_invites().get(name)
+        if fresh or not code:
+            code = link.new_invite(name)
+        text = link.invite_text(self.link.ip, DECK_PORT, code)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.say(f"Invite for {name} copied. Send it to them privately."
+                 + (" Their old invite no longer works." if fresh else ""), seconds=8)
+        return text
+
+    def group_box(self):
+        """Invite / Join: admin invites someone (a name in, a code out); a guest pastes a code to join. Either
+        can switch this PC to the other role."""
+        win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
+        win.title("Invite / Join")
+        win.attributes("-topmost", True)
+        win.transient(self.root)
+        win.resizable(False, False)
+        win.bind("<Escape>", lambda _e: win.destroy())
+
+        def heading(text, first=False):
+            tk.Label(win, text=text, bg=BG, fg=INK, font=FONT, anchor="w").pack(fill="x", pady=(0 if first else 16, 0))
+
+        def say(text, color=INK_DIM):
+            label = tk.Label(win, text=text, bg=BG, fg=color, font=STATUS_FONT, anchor="w", justify="left",
+                             wraplength=380)
+            label.pack(fill="x", pady=(4, 0))
+            return label
+
+        def box(value=""):
+            e = tk.Entry(win, width=44, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+            e.insert(0, value)
+            e.pack(fill="x", pady=(6, 0), ipady=6)
+            return e
+
+        try:
+            clip = self.root.clipboard_get().strip()
+        except tk.TclError:
+            clip = ""
+        pasted = clip if clip.startswith(link.PREFIX) else ""
+
+        def join(entry, note):
+            text = entry.get().strip()
+            if not text.startswith(link.PREFIX):
+                note.config(text="That doesn't look like a code. It starts with podcast-deck://", fg=REC)
+                return
+            if ADMIN:
+                if not messagebox.askyesno("Podcast Deck", "Join their group? This PC stops running the show and "
+                                           "becomes a guest on theirs. Your layouts in OBS aren't touched, and you "
+                                           "can start your own group again from here.", parent=win):
+                    return
+                configfile.update(ADMIN=False, INVITE=text)
+                self.restart()
+                return
+            self.use_invite(text)
+            win.destroy()
+
+        if ADMIN:
+            heading("Invite someone", first=True)
+            say("Their name (it's on their camera; they can change what's shown later):")
+            name_box = box()
+            name_box.focus_set()
+            online = tk.BooleanVar(value=True)
+            tk.Checkbutton(win, text="They're joining from somewhere else (give them a code)", variable=online,
+                           bg=BG, fg=INK_DIM, selectcolor=KEY, activebackground=BG, activeforeground=INK,
+                           font=STATUS_FONT, anchor="w").pack(fill="x", pady=(4, 0))
+            note = say("", REC)
+
+            def add(_e=None):
+                name = " ".join(name_box.get().split())[:24]
+                if not name:
+                    note.config(text="Type their name first.")
+                    return
+                if any(n.lower() == name.lower() for n in cfg.CAMS):
+                    note.config(text=f"{name} is already in the group. Click their name for their code.")
+                    return
+                cfg.CAMS = list(cfg.CAMS) + [name]
+                configfile.update(CAMS=cfg.CAMS)
+                self.people_shown = None
+                self.call(lambda b: b.rebuild_soon(), then=lambda msg: self.say(f"{name} added. {msg}", 8))
+                if online.get():
+                    self.invite_sent_box(win, name)
+                else:
+                    win.destroy()
+            go = self.small_key(win, "Invite", add)
+            go.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
+            go.pack(anchor="w", pady=(6, 0))
+            name_box.bind("<Return>", add)
+
+            heading("Got a code from someone else?")
+            say("Join their group instead. This PC becomes a guest on theirs.")
+            code_box = box(pasted)
+            code_note = say("")
+            self.small_key(win, "Join their group", lambda: join(code_box, code_note)).pack(anchor="w", pady=(6, 0))
+        else:
+            heading("Join a group", first=True)
+            say("Paste the code the admin sent you (it starts with podcast-deck://). Tailscale needs to be on, with "
+                "the admin's PC shared with you.")
+            code_box = box(pasted)
+            code_box.focus_set()
+            code_note = say("")
+            go = self.small_key(win, "Join", lambda: join(code_box, code_note))
+            go.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
+            go.pack(anchor="w", pady=(6, 0))
+            code_box.bind("<Return>", lambda _e: join(code_box, code_note))
+
+            heading("Running OBS on this PC?")
+            say("Start your own group. This PC runs the show, and you invite the others.")
+
+            def host():
+                if messagebox.askyesno("Podcast Deck", "Start your own group? This PC runs the show with OBS, and "
+                                       "stops being a guest.", parent=win):
+                    configfile.update(ADMIN=True)
+                    self.restart()
+            self.small_key(win, "Start my own group", host).pack(anchor="w", pady=(6, 0))
+        self.key(win, "Close", win.destroy).pack(anchor="e", pady=(16, 0))
+
+    def restart(self):
+        """Open the deck again (after switching between running the show and joining one)."""
+        args = [sys.executable] + (sys.argv[1:] if getattr(sys, "frozen", False) else sys.argv)
+        subprocess.Popen(args, cwd=media.APP_DIR, env=dict(os.environ, PODCAST_DECK_WAIT="2"))
+        self.closing()
+
+    def invite_sent_box(self, win, name):
+        """After Invite: their code, already copied, and the one other thing a guest needs (Tailscale)."""
+        for w in win.winfo_children():
+            w.destroy()
+        win.unbind("<Return>")
+        text = self.copy_person_invite(name, fresh=False) if self.link and self.link.httpd else None
+        tk.Label(win, text=f"{name} is in the group", bg=BG, fg=INK, font=FONT, anchor="w").pack(fill="x")
+
+        def say(t, color=INK_DIM):
+            tk.Label(win, text=t, bg=BG, fg=color, font=STATUS_FONT, anchor="w", justify="left",
+                     wraplength=380).pack(fill="x", pady=(6, 0))
+        if text:
+            say("Their code is copied. Send it to them privately (it's only for them):")
+            box = tk.Entry(win, width=44, bg=KEY, fg=INK, relief="flat", font=STATUS_FONT, readonlybackground=KEY)
+            box.insert(0, text)
+            box.config(state="readonly")
+            box.pack(fill="x", pady=(4, 0), ipady=5)
+        else:
+            say("Tailscale isn't running on this PC, so there's no code yet. Start Tailscale, then click their name "
+                "at the top → Copy invite.", REC)
+        say("They also need to join your Tailscale: share this PC with them from Tailscale's page (⋯ next to "
+            "your PC → Share). Then they open the deck, click Invite / Join, and paste the code.")
+        row = tk.Frame(win, bg=BG)
+        row.pack(fill="x", pady=(10, 0))
+        if text:
+            self.small_key(row, "Copy again", lambda: self.copy_person_invite(name, fresh=False)).pack(side="left")
+        self.small_key(row, "Open Tailscale's page", lambda: webbrowser.open(
+            "https://login.tailscale.com/admin/machines")).pack(side="left", padx=6)
+        self.small_key(row, "Done", win.destroy).pack(side="right")
+
+    def remove_person(self, name):
+        """Admin: take someone out of the group. Their invite stops working and their camera leaves the layouts."""
+        if len(cfg.CAMS) <= 1:
+            self.tell("The group needs at least one camera.")
+            return
+        if not messagebox.askyesno("Podcast Deck", f"Remove {name} from the group?\n\nTheir invite stops working "
+                                   "and their camera is taken out of every layout.", parent=self.root):
+            return
+        link.remove_invite(name)
+        cfg.CAMS = [n for n in cfg.CAMS if n != name]
+        configfile.update(CAMS=cfg.CAMS)
+        self.people_shown = None
+        self.call(lambda b: b.rebuild_soon(), then=lambda msg: self.say(f"{name} removed. {msg}", 8))
 
 
 def welcome(root):
@@ -1811,6 +2036,7 @@ def welcome(root):
 
 
 if __name__ == "__main__":
+    time.sleep(float(os.environ.pop("PODCAST_DECK_WAIT", 0) or 0))   # a restart: let the old window close first
     root = tk.Tk()
     if cfg is None or (not ADMIN and not getattr(cfg, "INVITE", "")):
         welcome(root)

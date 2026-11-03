@@ -268,6 +268,19 @@ Guests are green while their deck is open and reaching the admin's deck (it chec
 seconds, so a guest goes gray about 10 seconds after their deck closes or loses Tailscale). Guests see the
 same row on their deck. Names show the name each person chose for their camera.
 
+**Invite / Join** (on the right of that row) opens one box for the group:
+- **Admin: Invite someone.** Type their name and click **Invite**. Their camera goes into every layout
+  (after the recording, if one is running). If they're joining from somewhere else, their code is made and
+  copied, ready to send privately, with a reminder to share your PC with them in Tailscale. Untick the box
+  for someone in the room with you.
+- **Admin: Got a code from someone else?** Paste it and click **Join their group**: this PC becomes a guest
+  on their group instead (the deck reopens). Your layouts in OBS aren't touched.
+- **Guest: Join a group.** Paste the code from the admin and click **Join**. **Start my own group** switches
+  this PC to running the show with OBS instead.
+
+**Click a name** (admin) to copy their code, give them a new one (the old one stops working), or **Remove
+from the group**, which also takes their camera out of the layouts.
+
 **Layouts** are color-coded by kind: blue for game, green for talking, magenta for video, yellow for
 breaks, gray for your own scenes. The live one has an accent bar. Tabs above the list (**General**, plus
 tabs you add with **＋ Tab**) keep them sorted; right-click a tab to rename or delete it. Drag a row up or
@@ -590,6 +603,8 @@ Ideas welcome: open an issue.
   and Save layout. The live layout's panel opens by itself; **−** closes it. The MEDIA section is gone.
 - A picture picked from Background ▾ on the admin's deck becomes that layout's default.
 - Who's in: a green or gray square and name for everyone in the group, under the header.
+- Invite / Join on the right of that row: invite someone (their code is copied), or paste a code to join a
+  group. Click a name to copy, renew, or remove.
 
 **Browser-controlled Video + Cams video, and Repair**
 

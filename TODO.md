@@ -58,11 +58,20 @@ Nothing has been run against real OBS yet. Do this before building anything new.
   - [ ] Picking a picture from Background ▾ in a panel: switch away and back, and it's still there.
   - [ ] Paste link with a video: Video ready / Switch shows in the panel and works.
   - [ ] Who's in: your name shows with a green square under the header.
-  - [ ] Layout rows show no hotkey; the + panel shows it. Settings → Hotkeys: Change… a layout's hotkey
+  - [x] Layout rows show no hotkey; the + panel shows it.
+  - [ ] Settings → Hotkeys: Change… a layout's hotkey
         and press new keys (pressing them doesn't also switch layout), Clear, Default, and Record /
         Next background. A hotkey already in use is refused. They still work after reopening the deck.
-  - [ ] The desktop shortcut updates the deck: with a new commit on GitHub, opening it brings in the new
-        version. Offline, it still opens. A changed requirements.txt installs the new add-ons.
+  - [x] The desktop shortcut updates the deck: with a new commit on GitHub, opening it brings in the new
+        version.
+  - [ ] The desktop shortcut still opens the deck when offline, and a changed requirements.txt installs
+        the new add-ons.
+  - [ ] Invite / Join → Invite someone in the room (box unticked): their camera shows up in every layout.
+        Invite someone joining: their code is copied. While recording, the layouts wait until it stops.
+  - [ ] Invite / Join → Join their group (admin) and Start my own group (guest): the deck reopens in the
+        other role.
+  - [ ] Click a name at the top: Copy invite, New invite, Remove from the group (camera leaves the
+        layouts).
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
 

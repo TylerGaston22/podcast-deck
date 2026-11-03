@@ -16,8 +16,9 @@ Guidance for Claude Code when working in this repo.
   username.
 - **Target platform is Windows + OBS 28+** (obs-websocket built in). Test changes against the real OBS
   on this PC when possible.
-- **Approval before every commit and push.** Show the diff and wait for explicit approval before each
-  commit and each push.
+- **Commit and push when a change is ready.** The user's desktop shortcut updates from GitHub, so changes
+  only reach them once pushed. Test first (against a pretend OBS when real OBS isn't available), then
+  commit and push to `main` without waiting for approval, and summarize what changed.
 
 ## Context
 

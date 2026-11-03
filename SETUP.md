@@ -42,14 +42,18 @@ To change a webcam or pick the browser window for Browser + Cams: **Settings…*
 1. Install **Tailscale** from https://tailscale.com/download and sign in. (First guest only.)
 2. Open https://login.tailscale.com/admin/machines, click the **⋯** menu next to your PC → **Share** →
    **Copy invite link** tab → **Copy share link**, and send the link to the guest.
-3. In the deck: **Settings…** → **Guests** → **Copy invite** next to the guest's name, and send it to them privately.
+3. In the deck, click **Invite / Join** at the top right, type the guest's name, and click **Invite**. Their
+   camera goes into every layout, and their code is copied: send it to them privately. (Already in the
+   group? Click their name at the top → **Copy invite**.)
 
 ### Guest
 1. Install **Tailscale** from https://tailscale.com/download and sign in with your own free account.
 2. Open the share link the admin sent and accept it.
-3. On GitHub, click **Code** → **Download ZIP**, extract it anywhere, and double-click **Install.bat**.
+3. Get the deck the same way as the admin (Part A, step 2: `git clone` is best, so it updates itself), and
+   double-click **Install.bat**.
 4. Copy the invite the admin sent you. In the deck, click **I'm joining from somewhere else**. The
-   invite is already pasted. Type the name to show on your camera, and click **Join**. (Change it later
+   invite is already pasted. Type the name to show on your camera, and click **Join**. (A new code later:
+   **Invite / Join** at the top right. Change your name later
    in **Settings…** → **You**.)
 
 ---
