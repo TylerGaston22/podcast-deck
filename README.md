@@ -405,7 +405,12 @@ podcast-deck/
 ├── theme.py            Deck window colors and fonts
 ├── requirements.txt    Python dependencies
 ├── Podcast Deck.bat    Updates the deck (git pull), then launches it with no console. Desktop shortcut target
-├── build_exe.bat       Builds dist\PodcastDeck.exe with PyInstaller
+├── build_exe.bat       Builds the app (and installer) locally, like GitHub's release build
+├── version.py          The app's version; GitHub fills it in for each release
+├── updater.py          The installed app's self-update from GitHub Releases
+├── installer/          Inno Setup script for PodcastDeck-Setup.exe
+├── docs/               Download page and invite (join) page, served by GitHub Pages
+├── .github/workflows/  release.yml: builds and publishes the installer
 ├── .gitignore          Keeps config.py, build output, and caches out of git
 ├── LICENSE             MIT
 └── README.md           This file
@@ -413,14 +418,24 @@ podcast-deck/
 
 ## Sharing it without Python
 
-```
-C:\Users\<you>\source\repos\podcast-deck\build_exe.bat
-```
+**Download page:** https://tylergaston22.github.io/podcast-deck/ (from `docs/`, on GitHub Pages). Its
+**Download for Windows** button always gets the newest `PodcastDeck-Setup.exe`:
+https://github.com/TylerGaston22/podcast-deck/releases/latest/download/PodcastDeck-Setup.exe
 
-This installs PyInstaller and produces `C:\Users\<you>\source\repos\podcast-deck\dist\PodcastDeck.exe`. Give someone the `.exe`
-with a filled-in `config.py` in the same folder and they can run the deck without Python. They still
-need OBS, and someone still needs to run `build_scenes.py` once on their machine (or set up the scenes
-by hand). Guests joining online don't need OBS at all; see [Hosts joining online](#hosts-joining-online).
+- **The installer** needs no Python, git, or admin rights. It installs to
+  `C:\Users\<you>\AppData\Local\Programs\Podcast Deck`, adds desktop and Start menu shortcuts, and lets
+  `podcast-deck://` invite links open the deck.
+- **Updates:** the installed deck checks for a newer release each time it opens and installs it by itself
+  (never mid-recording). `config.py`, backgrounds, and the guest list are kept.
+- **Invite links:** Invite / Join gives each guest a link to `docs/join.html`. That page walks them through
+  Tailscale (including your share link, if you add it), the download, and a **Join the show** button that
+  opens their deck with the invite. The invite rides after the `#`, so it never reaches any server.
+- **Releases** are built by GitHub (`.github/workflows/release.yml`) on Windows whenever the deck's code
+  changes on `main`, numbered 1.0.1, 1.0.2, and so on. Run it by hand from the Actions tab if needed.
+- **Building it yourself:** `build_exe.bat` makes the same app in `dist\PodcastDeck\` (plus the installer
+  if Inno Setup is installed).
+
+A source folder cloned with git still works as before, and updates through `Podcast Deck.bat`.
 
 ## Troubleshooting
 

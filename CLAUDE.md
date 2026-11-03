@@ -22,6 +22,9 @@ Guidance for Claude Code when working in this repo.
 
 ## Context
 
+- **Pushing code to `main` ships it.** GitHub builds a new installer release for every code change, and
+  every installed deck updates to it the next time it opens. Only push code that's been tested.
+
 - The six layouts in `build_scenes.py` are a starting point. The templates are still being designed,
   so expect them to change; keep layout code easy to edit rather than baking in assumptions.
 

@@ -1,0 +1,39 @@
+/* Podcast Deck's web pages, in the deck's own "Stream Launcher" colors. */
+:root {
+  --bg: #050608; --panel: #08090C; --nav: #13171D; --key: #1B212A; --key-hover: #232A35; --line: #1D232C;
+  --ink: #E6EBF1; --ink-dim: #A4AFBE; --muted: #6C7888; --lit: #7CC4FF; --lit-ink: #06121E; --ok: #46D39A;
+  --rec: #FF3D4F;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+main { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
+header { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+.logo { background: var(--lit); color: var(--lit-ink); font-weight: 700; width: 28px; height: 28px;
+  display: grid; place-items: center; border-radius: 4px; }
+.brand { font-weight: 700; letter-spacing: .04em; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; }
+p { color: var(--ink-dim); margin: 0 0 16px; }
+.lead { font-size: 18px; }
+.button { display: inline-block; background: var(--key); color: var(--ink); text-decoration: none;
+  padding: 12px 20px; border-radius: 6px; font-weight: 600; border: 0; font: inherit; cursor: pointer; }
+.button:hover { background: var(--key-hover); }
+.button.primary { background: var(--lit); color: var(--lit-ink); }
+.button.primary:hover { filter: brightness(1.08); }
+.steps { list-style: none; padding: 0; margin: 24px 0; counter-reset: step; }
+.steps li { background: var(--nav); border-left: 3px solid var(--line); padding: 16px 16px 16px 56px;
+  margin-bottom: 8px; position: relative; counter-increment: step; }
+.steps li::before { content: counter(step); position: absolute; left: 16px; top: 16px; width: 26px; height: 26px;
+  border-radius: 50%; background: var(--key); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+.steps li.main { border-left-color: var(--lit); }
+.steps h2 { font-size: 17px; margin: 0 0 4px; }
+.steps p { margin: 0 0 12px; font-size: 15px; }
+.steps .button { margin: 0 8px 4px 0; padding: 9px 16px; font-size: 15px; }
+.note { font-size: 14px; color: var(--muted); }
+.warn { color: var(--rec); }
+code { background: var(--key); padding: 2px 6px; border-radius: 4px; font-size: 14px; word-break: break-all; }
+footer { margin-top: 40px; font-size: 14px; color: var(--muted); }
+footer a { color: var(--ink-dim); }
+p a:not(.button) { color: var(--lit); }

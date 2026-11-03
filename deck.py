@@ -35,6 +35,7 @@ import media
 import positions
 from control import DeckError
 import theme
+import updater
 from theme import BRAND_FONT, FONT, HINT_FONT, LABEL_FONT, ROW_FONT, STATUS_FONT
 
 
@@ -78,6 +79,58 @@ if configfile.load() is not None:              # no config.py yet: the welcome w
     use_config(configfile.load())
 
 
+INSTANCE_PORT = 4462                           # a deck that's already open listens here for invite links
+INSTANCE_HELLO = b"PODCAST-DECK-INVITE "
+
+
+def find_invite(text):
+    """The invite in a podcast-deck:// link, or in a join page link (…join.html#i=…). None if there isn't one."""
+    from urllib.parse import parse_qs, unquote
+    text = (text or "").strip()
+    if text.startswith(link.PREFIX):
+        return unquote(text).rstrip("/")
+    if "#" in text and "join" in text:
+        found = parse_qs(text.split("#", 1)[1]).get("i", [""])[0]
+        return found.rstrip("/") if found.startswith(link.PREFIX) else None
+    return None
+
+
+def hand_to_running_deck(invite):
+    """An invite link was clicked while a deck is already open: pass it over. True if one took it."""
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", INSTANCE_PORT), timeout=1) as s:
+            s.sendall(INSTANCE_HELLO + invite.encode() + b"\n")
+        return True
+    except OSError:
+        return False
+
+
+def listen_for_invites(on_invite):
+    """Take invite links clicked while this deck is open (see hand_to_running_deck). This PC only, and only
+    lines that start with our hello, so a web page can't talk to it."""
+    import socket
+    try:
+        server = socket.create_server(("127.0.0.1", INSTANCE_PORT))
+    except OSError:
+        return                                 # another deck has it
+
+    def serve():
+        while True:
+            conn, _ = server.accept()
+            with conn:
+                conn.settimeout(2)
+                try:
+                    data = conn.recv(4096)
+                except OSError:
+                    continue
+            if data.startswith(INSTANCE_HELLO):
+                found = find_invite(data[len(INSTANCE_HELLO):].decode(errors="ignore"))
+                if found:
+                    on_invite(found)
+    threading.Thread(target=serve, daemon=True).start()
+
+
 class Deck:
     def __init__(self, root):
         self.root = root
@@ -112,6 +165,7 @@ class Deck:
         self.open_layout = None                # the layout whose + panel is open (opens by itself when it goes live)
         self.panel, self.panel_key = None, None
         self.pending_bg = False                # a pasted background video is waiting for Switch
+        self.shares = {}                       # guest → the Tailscale share link added to their invite link
         root.title("Podcast Deck" if ADMIN else "Podcast Deck · guest")
         root.attributes("-topmost", True)
         root.geometry("320x880" if ADMIN else "320x600")
@@ -125,6 +179,8 @@ class Deck:
             self.status.config(text=self.setup_problem)
         else:
             self.poll()
+        listen_for_invites(lambda text: root.after(0, self.offer_invite, text))
+        root.after(3000, self.check_update)
 
     def build_ui(self):
         """Header, layouts, screen map, media, record, status bar. Rebuilt when the color scheme changes."""
@@ -1765,7 +1821,7 @@ class Deck:
         m = self.menu()
         m.add_command(label=name, state="disabled")
         invited = name in link.load_invites()
-        m.add_command(label="Copy invite", command=lambda: self.copy_person_invite(name, fresh=False))
+        m.add_command(label="Copy invite link", command=lambda: self.copy_person_invite(name, fresh=False))
         if invited:
             m.add_command(label="New invite (the old one stops working)",
                           command=lambda: self.copy_person_invite(name, fresh=True))
@@ -1774,7 +1830,8 @@ class Deck:
         m.tk_popup(event.x_root, event.y_root)
 
     def copy_person_invite(self, name, fresh):
-        """Put someone's invite on the clipboard. Returns it, or None if Tailscale isn't running here."""
+        """Put someone's invite link on the clipboard: a web page that walks them through Tailscale and the
+        download, then opens the invite in their deck. Returns it, or None if Tailscale isn't running here."""
         if not (self.link and self.link.httpd):
             self.tell("Tailscale isn't running on this PC, so there's no invite to send yet. Start Tailscale, wait "
                       "ten seconds, and try again.")
@@ -1782,10 +1839,10 @@ class Deck:
         code = link.load_invites().get(name)
         if fresh or not code:
             code = link.new_invite(name)
-        text = link.invite_text(self.link.ip, DECK_PORT, code)
+        text = link.join_link(link.invite_text(self.link.ip, DECK_PORT, code), self.shares.get(name, ""))
         self.root.clipboard_clear()
         self.root.clipboard_append(text)
-        self.say(f"Invite for {name} copied. Send it to them privately."
+        self.say(f"Invite link for {name} copied. Send it to them privately."
                  + (" Their old invite no longer works." if fresh else ""), seconds=8)
         return text
 
@@ -1818,12 +1875,13 @@ class Deck:
             clip = self.root.clipboard_get().strip()
         except tk.TclError:
             clip = ""
-        pasted = clip if clip.startswith(link.PREFIX) else ""
+        pasted = find_invite(clip) or ""
 
         def join(entry, note):
-            text = entry.get().strip()
-            if not text.startswith(link.PREFIX):
-                note.config(text="That doesn't look like a code. It starts with podcast-deck://", fg=REC)
+            text = find_invite(entry.get())
+            if not text:
+                note.config(text="That doesn't look like an invite. Paste the whole link or code from the admin.",
+                            fg=REC)
                 return
             if ADMIN:
                 if not messagebox.askyesno("Podcast Deck", "Join their group? This PC stops running the show and "
@@ -1875,8 +1933,13 @@ class Deck:
             self.small_key(win, "Join their group", lambda: join(code_box, code_note)).pack(anchor="w", pady=(6, 0))
         else:
             heading("Join a group", first=True)
-            say("Paste the code the admin sent you (it starts with podcast-deck://). Tailscale needs to be on, with "
-                "the admin's PC shared with you.")
+            say("Paste the invite link or code the admin sent you. (Clicking Join on the invite link's page does this "
+                "for you.)")
+            if link.tailscale_ip() is None:
+                say("Tailscale isn't running on this PC yet. Install it, sign in, and accept the admin's share link.",
+                    REC)
+                self.small_key(win, "Get Tailscale", lambda: webbrowser.open("https://tailscale.com/download")).pack(
+                    anchor="w", pady=(4, 0))
             code_box = box(pasted)
             code_box.focus_set()
             code_note = say("")
@@ -1896,14 +1959,65 @@ class Deck:
             self.small_key(win, "Start my own group", host).pack(anchor="w", pady=(6, 0))
         self.key(win, "Close", win.destroy).pack(anchor="e", pady=(16, 0))
 
+    def offer_invite(self, invite):
+        """An invite link was clicked. Ask first (links can come from anywhere), then join with it."""
+        self.root.deiconify()
+        self.root.lift()
+        try:
+            host = link.parse_invite(invite)[0]
+        except DeckError:
+            host = None
+        where = f" (the admin's PC at {host})" if host else ""
+        if ADMIN:
+            if not messagebox.askyesno("Podcast Deck", f"Join this group{where}?\n\nThis PC stops running the show and "
+                                       "becomes a guest on theirs. Your layouts in OBS aren't touched, and you can "
+                                       "start your own group again from Invite / Join.", parent=self.root):
+                return
+            configfile.update(ADMIN=False, INVITE=invite)
+            self.restart()
+            return
+        if invite == getattr(cfg, "INVITE", ""):
+            self.say("You're already using that invite.")
+            return
+        if messagebox.askyesno("Podcast Deck", f"Join this group{where}?", parent=self.root):
+            self.use_invite(invite)
+
+    def check_update(self):
+        """Installed app: if there's a newer version, install it and reopen. Never mid-recording."""
+        if not updater.installed():
+            return
+
+        def work():
+            url = updater.newer()
+            if url:
+                self.root.after(0, go, url)
+
+        def go(url):
+            if self.recording:
+                self.say("A deck update is ready. It installs the next time you open the deck.", 8)
+                return
+            self.status.config(text="Updating Podcast Deck… it reopens in a moment.")
+
+            def fetch():
+                try:
+                    updater.install(url)
+                except OSError:
+                    self.root.after(0, self.say, "Couldn't download the update. The deck tries again next time.", 8)
+                    return
+                self.root.after(0, self.closing)
+            threading.Thread(target=fetch, daemon=True).start()
+        threading.Thread(target=work, daemon=True).start()
+
     def restart(self):
         """Open the deck again (after switching between running the show and joining one)."""
-        args = [sys.executable] + (sys.argv[1:] if getattr(sys, "frozen", False) else sys.argv)
+        args = [sys.executable] + [a for a in (sys.argv[1:] if getattr(sys, "frozen", False) else sys.argv)
+                                   if not find_invite(a)]   # don't offer a clicked invite again
         subprocess.Popen(args, cwd=media.APP_DIR, env=dict(os.environ, PODCAST_DECK_WAIT="2"))
         self.closing()
 
     def invite_sent_box(self, win, name):
-        """After Invite: their code, already copied, and the one other thing a guest needs (Tailscale)."""
+        """After Invite: their invite link, already copied. It takes them through Tailscale and the download;
+        adding your Tailscale share link for them puts that step in the same place."""
         for w in win.winfo_children():
             w.destroy()
         win.unbind("<Return>")
@@ -1913,21 +2027,47 @@ class Deck:
         def say(t, color=INK_DIM):
             tk.Label(win, text=t, bg=BG, fg=color, font=STATUS_FONT, anchor="w", justify="left",
                      wraplength=380).pack(fill="x", pady=(6, 0))
-        if text:
-            say("Their code is copied. Send it to them privately (it's only for them):")
-            box = tk.Entry(win, width=44, bg=KEY, fg=INK, relief="flat", font=STATUS_FONT, readonlybackground=KEY)
-            box.insert(0, text)
-            box.config(state="readonly")
-            box.pack(fill="x", pady=(4, 0), ipady=5)
-        else:
-            say("Tailscale isn't running on this PC, so there's no code yet. Start Tailscale, then click their name "
-                "at the top → Copy invite.", REC)
-        say("They also need to join your Tailscale: share this PC with them from Tailscale's page (⋯ next to "
-            "your PC → Share). Then they open the deck, click Invite / Join, and paste the code.")
+
+        def field(value, editable=False):
+            e = tk.Entry(win, width=44, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT,
+                         readonlybackground=KEY)
+            e.insert(0, value)
+            if not editable:
+                e.config(state="readonly")
+            e.pack(fill="x", pady=(4, 0), ipady=5)
+            return e
+        if not text:
+            say("Tailscale isn't running on this PC, so there's no invite link yet. Install or start Tailscale, wait "
+                "ten seconds, then click their name at the top → Copy invite link.", REC)
+            row = tk.Frame(win, bg=BG)
+            row.pack(fill="x", pady=(10, 0))
+            self.small_key(row, "Get Tailscale", lambda: webbrowser.open("https://tailscale.com/download")).pack(
+                side="left")
+            self.small_key(row, "Done", win.destroy).pack(side="right")
+            return
+        say("Their invite link is copied. Send it to them privately (it's only for them). It walks them through "
+            "everything: Tailscale, downloading the deck, and joining.")
+        link_box = field(text)
+        say("Your Tailscale share link for them (optional): on Tailscale's page, ⋯ next to this PC → Share → Copy "
+            "share link. Paste it here and it's added to their invite link.")
+        share_box = field(self.shares.get(name, ""), editable=True)
+
+        def add_share(_e=None):
+            share = share_box.get().strip()
+            if share and not link.TAILSCALE_SHARE.fullmatch(share):
+                self.say("That isn't a Tailscale share link. It starts with https://login.tailscale.com/", 8)
+                return
+            self.shares[name] = share
+            new = self.copy_person_invite(name, fresh=False)
+            link_box.config(state="normal")
+            link_box.delete(0, "end")
+            link_box.insert(0, new)
+            link_box.config(state="readonly")
+        share_box.bind("<Return>", add_share)
+        share_box.bind("<FocusOut>", add_share)
         row = tk.Frame(win, bg=BG)
         row.pack(fill="x", pady=(10, 0))
-        if text:
-            self.small_key(row, "Copy again", lambda: self.copy_person_invite(name, fresh=False)).pack(side="left")
+        self.small_key(row, "Copy link", add_share).pack(side="left")
         self.small_key(row, "Open Tailscale's page", lambda: webbrowser.open(
             "https://login.tailscale.com/admin/machines")).pack(side="left", padx=6)
         self.small_key(row, "Done", win.destroy).pack(side="right")
@@ -1947,8 +2087,9 @@ class Deck:
         self.call(lambda b: b.rebuild_soon(), then=lambda msg: self.say(f"{name} removed. {msg}", 8))
 
 
-def welcome(root):
-    """First launch: one question, then config.py is written and the deck opens."""
+def welcome(root, invite=None):
+    """First launch: one question, then config.py is written and the deck opens. Opened from an invite link,
+    it goes straight to joining, with the invite filled in."""
     root.title("Podcast Deck")
     root.configure(bg=BG)
     root.attributes("-topmost", True)
@@ -2000,6 +2141,8 @@ def welcome(root):
         key(frame, "Start", go).pack(anchor="e", pady=(8, 0))
         root.bind("<Return>", go)
 
+    given = invite
+
     def joining():
         clear()
         label("Paste your invite", FONT, INK)
@@ -2008,7 +2151,7 @@ def welcome(root):
             clip = root.clipboard_get().strip()
         except tk.TclError:
             clip = ""
-        invite = entry(clip if clip.startswith(link.PREFIX) else "")
+        invite = entry(given or find_invite(clip) or "")
         label("Your name, shown on your camera (you can change it later in Settings):")
         shown = entry(os.environ.get("USERNAME", ""))
         invite.focus_set()
@@ -2033,14 +2176,21 @@ def welcome(root):
     big = dict(fill="x", ipady=10, pady=4)
     key(frame, "I'm recording (this PC runs OBS)", recording).pack(**big)
     key(frame, "I'm joining from somewhere else", joining).pack(**big)
+    if given:
+        joining()
 
 
 if __name__ == "__main__":
     time.sleep(float(os.environ.pop("PODCAST_DECK_WAIT", 0) or 0))   # a restart: let the old window close first
+    opened_with = next((find_invite(a) for a in sys.argv[1:] if find_invite(a)), None)   # an invite link was clicked
+    if opened_with and hand_to_running_deck(opened_with):
+        sys.exit()                             # the deck that's already open takes it
     root = tk.Tk()
     if cfg is None or (not ADMIN and not getattr(cfg, "INVITE", "")):
-        welcome(root)
+        welcome(root, opened_with)
     else:
         deck = Deck(root)
         root.protocol("WM_DELETE_WINDOW", deck.closing)
+        if opened_with:
+            root.after(800, deck.offer_invite, opened_with)
     root.mainloop()

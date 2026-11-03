@@ -25,6 +25,8 @@ import media
 TAILSCALE = ipaddress.ip_network("100.64.0.0/10")    # the only addresses Tailscale hands out
 INVITES = os.path.join(media.APP_DIR, "guests.json")  # {cam name: invite code}, git-ignored
 PREFIX = "podcast-deck://"
+JOIN_PAGE = "https://tylergaston22.github.io/podcast-deck/join.html"   # docs/join.html, on GitHub Pages
+TAILSCALE_SHARE = re.compile(r"https://login\.tailscale\.com/\S+")
 MAX_BODY = 16 * 1024
 _YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 _CAMERA_ID = re.compile(r"[A-Za-z0-9_]{12,64}")
@@ -126,18 +128,29 @@ def invite_text(ip, port, code):
     return f"{PREFIX}{ip}:{port}/{code}"
 
 
+def join_link(invite, share=""):
+    """The link to send a guest: a web page that walks them through Tailscale and the download, then opens
+    the invite in their deck. The invite rides after the #, which browsers never send to any server."""
+    from urllib.parse import quote
+    link = f"{JOIN_PAGE}#i={quote(invite, safe='')}"
+    if share:
+        link += f"&s={quote(share, safe='')}"
+    return link
+
+
 def parse_invite(text):
     """(host, port, code) from an invite. Refuses anything that isn't a Tailscale address."""
     from control import DeckError
-    m = re.fullmatch(r"podcast-deck://([^:/\s]+):(\d+)/([A-Za-z0-9_-]{16,})", (text or "").strip())
+    m = re.fullmatch(r"podcast-deck://([^:/\s]+):(\d+)/([A-Za-z0-9_-]{16,})", (text or "").strip().rstrip("/"))
     if not m:
-        raise DeckError("That invite doesn't look right. Paste the whole invite from the admin into INVITE "
-                        "in config.py.")
+        raise DeckError("That invite doesn't look right. Ask the admin for a new invite link, then click Join "
+                        "on it (or paste it with Invite / Join).")
     host, port, code = m.group(1), int(m.group(2)), m.group(3)
     if not on_tailscale(host):
         raise DeckError("That invite isn't a Tailscale address. The deck only connects over Tailscale.")
     if tailscale_ip() is None:
-        raise DeckError("Tailscale isn't running on this PC. Start Tailscale, then reopen the deck.")
+        raise DeckError("Tailscale isn't running on this PC. Install it from tailscale.com/download (or start it) "
+                        "and sign in; the deck connects by itself.")
     return host, port, code
 
 

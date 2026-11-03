@@ -12,13 +12,11 @@ Exact steps, in order.
 ## Part A: admin, first time
 
 1. Install **OBS Studio** from https://obsproject.com, open it once, then close it.
-2. Get the deck, for example into `C:\Users\<you>\source\repos\podcast-deck`:
-   - **Best:** clone it with git (`git clone https://github.com/TylerGaston22/podcast-deck`). Then the
-     desktop shortcut updates the deck by itself every time you open it.
-   - **Or:** on GitHub, click **Code** → **Download ZIP** and extract it. To update, download it again and
-     extract it over the old folder (your settings and pictures are kept).
-3. In that folder, double-click **Install.bat**. It installs Python if needed, the deck's add-ons, and
-   a **Podcast Deck** shortcut on your desktop, then opens the deck.
+2. Go to https://tylergaston22.github.io/podcast-deck/ and click **Download for Windows**.
+3. Open **PodcastDeck-Setup.exe**. If Windows says it protected your PC, click **More info** → **Run
+   anyway**. It installs the deck, puts **Podcast Deck** on your desktop, and opens it. It updates itself
+   from then on.
+   (Developers: you can instead clone the repo and run **Install.bat**; that copy updates with git.)
 4. In the deck, click **I'm recording (this PC runs OBS)**.
 5. Type everyone's name, separated by commas, and click **Start**.
 6. Open **OBS**. The deck connects by itself, sets up all the layouts in OBS, and picks your webcam.
@@ -43,18 +41,20 @@ To change a webcam or pick the browser window for Browser + Cams: **Settings…*
 2. Open https://login.tailscale.com/admin/machines, click the **⋯** menu next to your PC → **Share** →
    **Copy invite link** tab → **Copy share link**, and send the link to the guest.
 3. In the deck, click **Invite / Join** at the top right, type the guest's name, and click **Invite**. Their
-   camera goes into every layout, and their code is copied: send it to them privately. (Already in the
-   group? Click their name at the top → **Copy invite**.)
+   camera goes into every layout, and their **invite link** is copied. Paste the Tailscale share link from
+   step 2 into the box below it to include it, then send the link to them privately. (Already in the
+   group? Click their name at the top → **Copy invite link**.)
 
 ### Guest
-1. Install **Tailscale** from https://tailscale.com/download and sign in with your own free account.
-2. Open the share link the admin sent and accept it.
-3. Get the deck the same way as the admin (Part A, step 2: `git clone` is best, so it updates itself), and
-   double-click **Install.bat**.
-4. Copy the invite the admin sent you. In the deck, click **I'm joining from somewhere else**. The
-   invite is already pasted. Type the name to show on your camera, and click **Join**. (A new code later:
-   **Invite / Join** at the top right. Change your name later
-   in **Settings…** → **You**.)
+Open the invite link the admin sent you. It walks you through it:
+1. **Get Tailscale** and sign in with your own free account, then **Accept the host's share** (or open the
+   share link the admin sent separately).
+2. **Download for Windows**, and open **PodcastDeck-Setup.exe** (More info → Run anyway, if Windows asks).
+3. **Join the show**: the deck opens with your invite. Type the name to show on your camera, and click
+   **Join**.
+
+Got a new invite later? Click **Join the show** on its page again, or paste it with **Invite / Join** at
+the top right of the deck. Change your name in **Settings…** → **You**.
 
 ---
 

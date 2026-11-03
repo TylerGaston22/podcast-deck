@@ -15,6 +15,7 @@ from obsws_python.error import OBSSDKRequestError
 
 import configfile
 import link
+import media
 import obsconfig
 import positions
 
@@ -23,7 +24,7 @@ if cfg is None:
     sys.exit("No config.py yet. Open the deck once (Podcast Deck on your desktop) and it sets one up.")
 
 LIB = "_Sources (don't delete)"   # holds every input once; layouts just reference them
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = media.APP_DIR              # the player pages sit next to the deck (or the installed app)
 
 # Sizes in config.py (cams, margins, the video box) are for a 1920x1080 canvas. The layouts are
 # built for OBS's real canvas (Settings → Video → Base Resolution), so they scale by S = width / 1920.

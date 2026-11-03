@@ -75,6 +75,22 @@ Nothing has been run against real OBS yet. Do this before building anything new.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
 
+## Installer and invite links
+
+- [ ] On GitHub: Settings → General → Danger Zone → **Change visibility** → **Public**.
+- [ ] On GitHub: Settings → **Pages** → Source: **Deploy from a branch**, Branch: **main**, folder **/docs**,
+      Save. The pages appear at https://tylergaston22.github.io/podcast-deck/ a minute later.
+- [ ] The Actions tab shows a green **Release** run, and Releases has `PodcastDeck-Setup.exe`.
+- [ ] Download it from the download page and install: shortcut on the desktop, deck opens. Your current
+      setup (config.py, backgrounds) lives in the old folder; copy them into
+      `C:\Users\<you>\AppData\Local\Programs\Podcast Deck` to keep them.
+- [ ] The installed deck connects to OBS and builds layouts (the player pages load from the install folder).
+- [ ] Updates: after a new release, opening the installed deck updates it and reopens it.
+- [ ] Invite / Join → Invite: the copied link opens the join page; with a Tailscale share link pasted in,
+      the page shows Accept the host's share.
+- [ ] On a guest PC: the join page's Join the show opens the deck (fresh install: the join screen with the
+      invite filled in). With the deck already open, it asks to join and switches.
+
 ## Test on a fresh PC
 
 Checks that the deck works for a new person, not just on the PC it was built on. Use a laptop or any
@@ -158,11 +174,10 @@ Planned features, in priority order. The first two remove the most editing.
 - [ ] **Episode intro and outro scenes.** Title cards with the episode name, set before recording.
 - [ ] **Settings window, the rest.** Settings… covers webcams, the browser window, layouts, and
       guests. Still in `config.py`: hotkeys, mouse buttons, sizes, and the Discord overlay.
-- [ ] **Auto-updating app (later).** Ship the deck as an installed app that updates itself, so when a
-      new version is released, everyone using it gets the update without re-downloading or
-      re-running setup. (Started: the desktop shortcut runs `git pull` each time it opens, for folders
-      cloned with git. Still to do: updates for ZIP downloads, e.g. Install.bat turning the folder into a
-      git clone, or the deck downloading the newest version itself.)
+- [x] **Auto-updating app.** An installer (`PodcastDeck-Setup.exe`) built by GitHub on every code change;
+      the installed deck updates itself from GitHub Releases each time it opens.
+- [ ] **Signed installer.** Windows SmartScreen warns about new unsigned apps ("More info → Run anyway").
+      A code-signing certificate removes that, but costs money each year; decide if it's worth it.
 
 ## Layout templates
 
