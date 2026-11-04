@@ -46,6 +46,7 @@ def paint():
 paint()
 
 HANDLE = 10                                    # px: grab this close to a box's corner to resize it
+MAP_MAX = 240                                  # px: the screen map's tallest
 NOTES = os.path.join(media.APP_DIR, "NOTES.md")
 cfg, RECORD, BACKGROUND_HOTKEY = None, True, "ctrl+alt+b"
 
@@ -470,6 +471,8 @@ class Deck:
         help_page = page("Help")
         heading(help_page, "Help", first=True)
         note(help_page, "How the group works, what each deck can do, and how it's kept safe.")
+        note(help_page, f"Version {updater.VERSION}" + ("" if updater.installed() else " (running from the source "
+                                                        "folder)"), MUTED)
         self.small_key(help_page, "How it works", lambda: subprocess.Popen(["notepad.exe", NOTES])).pack(
             anchor="w", pady=(4, 0))
 
@@ -636,10 +639,12 @@ class Deck:
         self.say("Your camera page opened. Allow the camera and mic, and keep that tab open while you're on.", 10)
 
     def scale(self):
-        return self.map.winfo_width() / self.canvas[0]
+        """Screen-map pixels per canvas pixel: the map's width, but never taller than MAP_MAX, so a wide window
+        still leaves room for the layouts and their panels."""
+        return min(self.map.winfo_width() / self.canvas[0], MAP_MAX / self.canvas[1])
 
     def fit_map(self, _event=None):
-        height = round(self.map.winfo_width() * self.canvas[1] / self.canvas[0])
+        height = round(self.canvas[1] * self.scale())
         if abs(int(self.map.cget("height")) - height) > 1:
             self.map.config(height=height)
         self.draw_map()
@@ -2018,7 +2023,9 @@ class CameraDeck(Deck):
         tk.Label(win, text="Have OBS? Record your own show here, with everyone's cameras.", bg=BG, fg=INK_DIM,
                  font=STATUS_FONT, anchor="w").pack(fill="x")
         self.small_key(win, "Record my own show…", self.switch_mode).pack(anchor="w", pady=(6, 0))
-        self.key(win, "Close", win.destroy).pack(anchor="e", pady=(16, 0))
+        tk.Label(win, text=f"Version {updater.VERSION}", bg=BG, fg=MUTED, font=STATUS_FONT, anchor="w").pack(
+            fill="x", pady=(16, 0))
+        self.key(win, "Close", win.destroy).pack(anchor="e", pady=(8, 0))
 
 
 def open_deck(root):
