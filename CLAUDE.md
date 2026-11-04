@@ -19,6 +19,9 @@ Guidance for Claude Code when working in this repo.
 - **Commit and push when a change is ready.** The user's desktop shortcut updates from GitHub, so changes
   only reach them once pushed. Test first (against a pretend OBS when real OBS isn't available), then
   commit and push to `main` without waiting for approval, and summarize what changed.
+- **Tell the user the version after each push that ships code.** Check the new release's number
+  (GitHub Releases, `v1.0.N`) once the Release run finishes, so they can match it against Settings →
+  Help in the deck.
 
 ## Context
 
