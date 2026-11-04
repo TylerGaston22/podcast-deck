@@ -63,9 +63,13 @@ def base_sources():
 
 
 def remote_cams():
-    """Cams for people joining online: their VDO.Ninja view link, by cam name. Guests' decks send these
-    by themselves (Start my camera); REMOTE_CAMS in config.py can add more by hand."""
-    found = {name: link.vdo_view(cam_id) for name, cam_id in link.load_remote_cams().items()}
+    """Cams that come through VDO.Ninja, by cam name: everyone in the group (once there's someone besides
+    you; then your own cam comes the same way, since your browser has the webcam), plus REMOTE_CAMS in
+    config.py, added by hand."""
+    group, people = getattr(cfg, "GROUP", ""), getattr(cfg, "GROUP_PEOPLE", [])
+    found = {}
+    if group and len(people) > 1:
+        found = {name: link.vdo_view(link.camera_id(group, name)) for name in people}
     return {**found, **getattr(cfg, "REMOTE_CAMS", {})}
 
 

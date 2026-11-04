@@ -66,30 +66,27 @@ Nothing has been run against real OBS yet. Do this before building anything new.
         version.
   - [ ] The desktop shortcut still opens the deck when offline, and a changed requirements.txt installs
         the new add-ons.
-  - [ ] Invite / Join → Invite someone in the room (box unticked): their camera shows up in every layout.
-        Invite someone joining: their code is copied. While recording, the layouts wait until it stops.
-  - [ ] Invite / Join → Join their group (admin) and Start my own group (guest): the deck reopens in the
-        other role.
-  - [ ] Click a name at the top: Copy invite, New invite, Remove from the group (camera leaves the
-        layouts).
+  - [ ] Invite / Join → Add someone "here with me": a webcam source for them in every layout. Add someone
+        else: the updated group link is copied. While recording, the layouts wait until it stops.
+  - [ ] Click a name at the top → Remove from my show: their camera leaves the layouts.
+  - [ ] Settings → Group → Switch to camera only, then Settings → Record my own show: the deck reopens in
+        the other mode each time.
 - [ ] Record a short test clip and watch it back: layouts swap cleanly and cams are positioned well.
 - [ ] Fix whatever breaks, and note anything surprising in the README's Troubleshooting section.
 
-## Installer and invite links
+## Installer and group links
 
-- [ ] On GitHub: Settings → General → Danger Zone → **Change visibility** → **Public**.
-- [ ] On GitHub: Settings → **Pages** → Source: **Deploy from a branch**, Branch: **main**, folder **/docs**,
-      Save. The pages appear at https://tylergaston22.github.io/podcast-deck/ a minute later.
-- [ ] The Actions tab shows a green **Release** run, and Releases has `PodcastDeck-Setup.exe`.
+- [x] On GitHub: make the repo public.
+- [x] On GitHub: Settings → Pages → main, /docs. Live at https://tylergaston22.github.io/podcast-deck/
+- [x] The Actions tab shows a green **Release** run, and Releases has `PodcastDeck-Setup.exe`.
 - [ ] Download it from the download page and install: shortcut on the desktop, deck opens. Your current
       setup (config.py, backgrounds) lives in the old folder; copy them into
       `C:\Users\<you>\AppData\Local\Programs\Podcast Deck` to keep them.
 - [ ] The installed deck connects to OBS and builds layouts (the player pages load from the install folder).
 - [ ] Updates: after a new release, opening the installed deck updates it and reopens it.
-- [ ] Invite / Join → Invite: the copied link opens the join page; with a Tailscale share link pasted in,
-      the page shows Accept the host's share.
-- [ ] On a guest PC: the join page's Join the show opens the deck (fresh install: the join screen with the
-      invite filled in). With the deck already open, it asks to join and switches.
+- [ ] Invite / Join → Copy link: it opens the join page with everyone's names.
+- [ ] On another PC: the join page's Join the show opens the deck (fresh install: the first-launch screen
+      for the group). With the deck already open, it asks to join and switches.
 
 ## Test on a fresh PC
 
@@ -116,8 +113,8 @@ OBS. It catches broken layouts and buttons early, but doesn't replace testing in
 - [ ] Tests that `build_scenes.py` builds all seven layouts with sources inside the canvas, at 1080p and 4K.
 - [ ] Tests that layout switching, Record, Background, Play link, Repair layouts, and Bring back deleted
       layouts send the right requests.
-- [ ] Tests for guest permissions: a guest can only move their own camera, and layout control follows
-      "Guests get full control".
+- [ ] Tests for the group: links round-trip, names match regardless of case, camera IDs are the same on
+      every deck.
 - [ ] One command to run them all (`py -m pytest`), and a note in the README.
 - [ ] Run them on GitHub on every push (GitHub Actions, Windows runner).
 
@@ -125,31 +122,24 @@ OBS. It catches broken layouts and buttons early, but doesn't replace testing in
 
 Needs at least one other person on another PC.
 
-- [ ] Install Tailscale on both PCs and share the admin PC with the guest.
-- [ ] Guest runs Install.bat on a fresh PC with no Python: it installs Python and opens the deck.
-- [ ] Admin: Settings… → Guests → Copy invite, send it. Guest clicks I'm joining → Join. It connects and the
-      title bar shows their name.
-- [ ] Guest's display name (typed when joining) shows on their name tag and on both screen maps.
-      Changing it in Settings → You updates it.
-- [ ] Guest clicks Start my camera: VDO.Ninja opens, and their camera shows up in the show (after the
-      recording, if one is running).
-- [ ] Guest drags and resizes their camera; it moves in OBS within a moment. They can't grab anyone
-      else's.
-- [ ] The guest's layout buttons are greyed out, and Record, Background, and Play link are hidden,
-      until the admin ticks "Guests get full control" (Settings → Guests). Then they all work.
-- [ ] Unticking it takes the controls away again within a couple of seconds.
-- [ ] Settings… → Guests → Remove: the guest's deck stops working right away.
-- [ ] Two people dragging at the same time don't undo each other's moves.
-- [ ] Who's in: the guest's square turns green on both decks when their deck connects, and gray about 10
-      seconds after they close it.
+- [ ] They install from the join page link and join as Camera only. Their deck shows the group.
+- [ ] They click Start my camera: VDO.Ninja opens, and their camera shows up in your OBS (in every layout),
+      with a green square by their name.
+- [ ] You, recording in a group: click Start my camera too; your own camera shows in your OBS.
+- [ ] Two people record at once: each has everyone's camera, and moving cameras on one deck doesn't
+      change the other's OBS.
+- [ ] Someone joins under a name the link didn't have: their deck copies the updated link; pasting it on
+      the others' decks adds their camera.
+- [ ] Invite / Join → New link…: the old link's cameras stop showing until everyone uses the new one.
+- [ ] Sound: each person's mic comes through in the recording, with no echo.
 - [ ] Note in the README how laggy it feels over the internet, and anything else surprising.
 
 ## Try with the real setup
 
 - [ ] Discord StreamKit voice overlay: get the widget URL, put it in `config.py`, rerun
       `build_scenes.py`, and check that the icons light up when people talk.
-- [ ] Decide how remote hosts' video comes in. VDO.Ninja is built in now (`REMOTE_CAMS`); try it
-      against Discord call window capture and update the README with whichever works better.
+- [ ] Compare VDO.Ninja cameras with Discord call window capture for quality and lag, and note it in the
+      README.
 - [ ] Just Us layout: turn on Crop to Bounding Box for each cam and check that they fill their panels.
 - [ ] Use the deck during an actual game to make sure the hotkeys don't clash with game controls.
 
@@ -172,8 +162,8 @@ Planned features, in priority order. The first two remove the most editing.
 - [ ] **Discord video as cam sources.** First-class support for people who join over a Discord call
       instead of a local webcam.
 - [ ] **Episode intro and outro scenes.** Title cards with the episode name, set before recording.
-- [ ] **Settings window, the rest.** Settings… covers webcams, the browser window, layouts, and
-      guests. Still in `config.py`: hotkeys, mouse buttons, sizes, and the Discord overlay.
+- [ ] **Settings window, the rest.** Settings… covers webcams, the browser window, layouts, the
+      group, and hotkeys. Still in `config.py`: hotkeys, mouse buttons, sizes, and the Discord overlay.
 - [x] **Auto-updating app.** An installer (`PodcastDeck-Setup.exe`) built by GitHub on every code change;
       the installed deck updates itself from GitHub Releases each time it opens.
 - [ ] **Signed installer.** Windows SmartScreen warns about new unsigned apps ("More info → Run anyway").

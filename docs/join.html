@@ -5,27 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>Join a show</title>
-  <meta name="description" content="You've been invited to join a show on Podcast Deck.">
+  <meta name="description" content="You've been invited to a show on Podcast Deck.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
   <header><span class="logo">P</span><span class="brand">PODCAST DECK</span></header>
   <h1>You're invited to join a show</h1>
-  <p class="lead">Three steps, once. Next time, just open Podcast Deck.</p>
-  <p id="missing" class="warn" hidden>This link is missing its invite. Ask the person who sent it for a new one.</p>
+  <p class="lead" id="who">Two steps, once. Next time, just open Podcast Deck.</p>
+  <p id="missing" class="warn" hidden>This link is missing its group. Ask the person who sent it for a new one.</p>
 
   <ol class="steps">
-    <li>
-      <h2>Get Tailscale and sign in</h2>
-      <p>It's a free, private connection between your PC and the host's. Nothing goes over the open internet.</p>
-      <a class="button" href="https://tailscale.com/download/windows" target="_blank" rel="noopener">Get Tailscale</a>
-      <span id="share-step" hidden>
-        <p style="margin-top:12px">Then accept the host's share, so your PC can reach theirs:</p>
-        <a class="button" id="share" href="#" target="_blank" rel="noopener">Accept the host's share</a>
-      </span>
-      <p class="note" id="no-share">The host also sends you a Tailscale share link. Open it and accept it.</p>
-    </li>
     <li>
       <h2>Get Podcast Deck</h2>
       <p>Open <strong>PodcastDeck-Setup.exe</strong> once it's downloaded. If Windows says it protected your PC,
@@ -34,38 +24,38 @@
     </li>
     <li class="main">
       <h2>Join</h2>
-      <p>Opens Podcast Deck with your invite. Type the name to show on your camera, and you're in.</p>
+      <p>Opens Podcast Deck with the group. Type your name, and pick <strong>Record my own show</strong> (you have
+        OBS) or <strong>Camera only</strong>. Then click <strong>Start my camera</strong>.</p>
       <a class="button primary" id="join" href="#">Join the show</a>
       <p class="note" style="margin-top:12px">Nothing happens? Open Podcast Deck, click <strong>Invite / Join</strong>,
-        and paste your invite: <button class="button" id="copy" type="button">Copy invite</button></p>
+        and paste this page's address: <button class="button" id="copy" type="button">Copy link</button></p>
     </li>
   </ol>
 
-  <footer>This invite is only for you. Don't share it. <a href="index.html">What's Podcast Deck?</a></footer>
+  <footer>Keep this link within your group: anyone with it can see the group's cameras.
+    <a href="index.html">What's Podcast Deck?</a></footer>
 </main>
 <script>
-  // The invite and share link ride after the # in the address, which browsers never send to any server.
+  // The group rides after the # in the address, which browsers never send to any server.
   const params = new URLSearchParams(location.hash.slice(1));
-  const invite = params.get("i") || "";
-  const share = params.get("s") || "";
+  const group = params.get("g") || "";
+  const names = (params.get("n") || "").split(",").map(n => n.trim()).filter(Boolean);
   const join = document.getElementById("join");
-  if (invite.startsWith("podcast-deck://")) {
-    join.href = invite;
+  if (/^pd[0-9a-f]{16}$/.test(group)) {
+    join.href = "podcast-deck://join?g=" + group + "&n=" + encodeURIComponent(names.join(",")).replace(/%2C/g, ",");
+    if (names.length) {
+      document.getElementById("who").textContent = "With " + names.join(", ") + ". Two steps, once.";
+    }
   } else {
     document.getElementById("missing").hidden = false;
     join.removeAttribute("href");
   }
-  if (share.startsWith("https://login.tailscale.com/")) {
-    document.getElementById("share").href = share;
-    document.getElementById("share-step").hidden = false;
-    document.getElementById("no-share").hidden = true;
-  }
   document.getElementById("copy").addEventListener("click", async (e) => {
     try {
-      await navigator.clipboard.writeText(invite);
+      await navigator.clipboard.writeText(location.href);
       e.target.textContent = "Copied";
     } catch {
-      prompt("Copy your invite:", invite);
+      prompt("Copy this link:", location.href);
     }
   });
 </script>

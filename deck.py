@@ -6,12 +6,11 @@ optional mouse side buttons, all of which work while a game has focus. Buttons a
 add later shows up automatically. The Background menu and Play link box change the
 background picture and the Video + Cams video without opening OBS.
 
-Hosts joining online run the deck too, as guests. The admin's deck (on the PC that runs OBS and
-records) is the only thing that touches OBS. Guests' decks send it requests over Tailscale, using
-an invite from the admin, and the admin's deck checks each one first. Guests can always move their
-own camera on the screen map, and get every other control when the admin turns on full control.
+Everyone on the show is in a group, and nobody controls anyone else's OBS. People who record run
+this deck with their own OBS and arrange everyone's camera in their own show; people who don't just
+send their camera (the camera-only window, CameraDeck). Cameras travel through VDO.Ninja.
 
-The first launch asks one question (recording, or joining?) and writes config.py itself.
+The first launch asks your name and whether this PC records, and writes config.py itself.
 
     py C:\\Users\\<you>\\source\\repos\\podcast-deck\\deck.py
 """
@@ -48,14 +47,13 @@ paint()
 
 HANDLE = 10                                    # px: grab this close to a box's corner to resize it
 NOTES = os.path.join(media.APP_DIR, "NOTES.md")
-cfg, ADMIN, DECK_PORT, BACKGROUND_HOTKEY = None, True, 4460, "ctrl+alt+b"
+cfg, RECORD, BACKGROUND_HOTKEY = None, True, "ctrl+alt+b"
 
 
 def use_config(found):
-    global cfg, ADMIN, DECK_PORT, BACKGROUND_HOTKEY
+    global cfg, RECORD, BACKGROUND_HOTKEY
     cfg = found
-    ADMIN = getattr(cfg, "ADMIN", True)        # older config.py files are the single-PC setup
-    DECK_PORT = getattr(cfg, "DECK_PORT", 4460)
+    RECORD = getattr(cfg, "RECORD", getattr(cfg, "ADMIN", True))   # older config.py: ADMIN meant "has OBS"
     BACKGROUND_HOTKEY = getattr(cfg, "BACKGROUND_HOTKEY", "ctrl+alt+b")
     theme.use(getattr(cfg, "THEME", theme.DEFAULT))
     paint()
@@ -79,24 +77,18 @@ if configfile.load() is not None:              # no config.py yet: the welcome w
     use_config(configfile.load())
 
 
-INSTANCE_PORT = 4462                           # a deck that's already open listens here for invite links
+INSTANCE_PORT = 4462                           # a deck that's already open listens here for group links
 INSTANCE_HELLO = b"PODCAST-DECK-INVITE "
 
 
 def find_invite(text):
-    """The invite in a podcast-deck:// link, or in a join page link (…join.html#i=…). None if there isn't one."""
-    from urllib.parse import parse_qs, unquote
+    """The group link in text (the join page's address, or a podcast-deck:// link), or None."""
     text = (text or "").strip()
-    if text.startswith(link.PREFIX):
-        return unquote(text).rstrip("/")
-    if "#" in text and "join" in text:
-        found = parse_qs(text.split("#", 1)[1]).get("i", [""])[0]
-        return found.rstrip("/") if found.startswith(link.PREFIX) else None
-    return None
+    return text if link.find_group(text) else None
 
 
 def hand_to_running_deck(invite):
-    """An invite link was clicked while a deck is already open: pass it over. True if one took it."""
+    """A group link was clicked while a deck is already open: pass it over. True if one took it."""
     import socket
     try:
         with socket.create_connection(("127.0.0.1", INSTANCE_PORT), timeout=1) as s:
@@ -107,7 +99,7 @@ def hand_to_running_deck(invite):
 
 
 def listen_for_invites(on_invite):
-    """Take invite links clicked while this deck is open (see hand_to_running_deck). This PC only, and only
+    """Take group links clicked while this deck is open (see hand_to_running_deck). This PC only, and only
     lines that start with our hello, so a web page can't talk to it."""
     import socket
     try:
@@ -131,19 +123,30 @@ def listen_for_invites(on_invite):
     threading.Thread(target=serve, daemon=True).start()
 
 
+def group_people():
+    """Everyone in the group, by name (empty when there's no group)."""
+    return list(getattr(cfg, "GROUP_PEOPLE", [])) if getattr(cfg, "GROUP", "") else []
+
+
+def sends_camera():
+    """Whether this PC sends its camera to the group: camera only, or recording in a group with others."""
+    people = group_people()
+    return bool(getattr(cfg, "ME", "")) and cfg.ME in people and (not RECORD or len(people) > 1)
+
+
 class Deck:
+    """The deck on a PC that records: it controls this PC's OBS, and nothing else."""
+
     def __init__(self, root):
         self.root = root
-        self.backend, self.setup_problem, self.link = None, None, None
-        self.linking, self.next_link_try = False, 0.0
+        self.backend, self.setup_problem = None, None
         try:
-            self.backend = control.Local(cfg) if ADMIN else None
+            self.backend = control.Local(cfg)
         except DeckError as e:
             self.setup_problem = str(e)
 
         self.scenes, self.current, self.recording = [], None, False
-        self.full, self.built_full = False, None   # guests: whether the admin gave them full control
-        self.me = f"Cam - {cfg.ME}" if ADMIN and getattr(cfg, "ME", "") else None
+        self.me = f"Cam - {cfg.ME}" if getattr(cfg, "ME", "") else None
         self.buttons = {}
         self.hotkeys, self.control_hotkeys = [], []
         self.notice, self.notice_until = "", 0.0
@@ -153,11 +156,11 @@ class Deck:
         self.drag, self.pending, self.sending = None, None, False
         self.guides = []                       # snap lines shown while dragging
         self.hold_until = 0.0                  # keep the map as dragged until OBS has caught up
-        self.names, self.sent_name = {}, False  # display names guests chose, by cam name
+        self.names = {}                        # the name shown on each cam, if changed in Settings
         self.now = {}                          # what's showing: background and video titles
         self.bg_preview = None                 # the pasted background video's place in its preview
         self.mine = {"bg": False, "video": False}   # whether this deck's control page runs each channel live
-        self.bg = bgcontrol.BgControl(self, ADMIN)    # this PC only: the browser control page, and OBS's feed
+        self.bg = bgcontrol.BgControl(self, True)    # this PC only: the browser control page, and OBS's feed
 
         self.last_state = None                 # the last OBS state, to redraw after a color scheme change
         self.meta = {"tabs": [positions.GENERAL], "tab": {}, "color": {}}   # layout tabs and marker colors
@@ -165,13 +168,13 @@ class Deck:
         self.open_layout = None                # the layout whose + panel is open (opens by itself when it goes live)
         self.panel, self.panel_key = None, None
         self.pending_bg = False                # a pasted background video is waiting for Switch
-        self.shares = {}                       # guest → the Tailscale share link added to their invite link
-        root.title("Podcast Deck" if ADMIN else "Podcast Deck · guest")
+        self.live = {}                         # whose camera is showing, by name
+        root.title("Podcast Deck")
         root.attributes("-topmost", True)
-        root.geometry("320x880" if ADMIN else "320x600")
+        root.geometry("320x880")
         root.minsize(260, 320)
         self.build_ui()
-        self.set_control_hotkeys(ADMIN)
+        self.set_control_hotkeys(True)
 
         if cfg.MOUSE_BUTTONS:
             mouse.hook(self.on_mouse)
@@ -193,10 +196,10 @@ class Deck:
         tk.Frame(root, bg=LINE, height=1).pack(fill="x")
         tk.Label(header, text="P", bg=LIT, fg=LIT_INK, font=LABEL_FONT, width=2).pack(side="left", padx=(12, 8), pady=10)
         tk.Label(header, text="PODCAST DECK", bg=PANEL, fg=INK, font=BRAND_FONT).pack(side="left")
-        self.obs_pill = self.pill(header, "OBS" if ADMIN else "ADMIN")
+        self.obs_pill = self.pill(header, "OBS")
         self.obs_pill["frame"].pack(side="right", padx=(4, 12))
         self.rec_pill = self.pill(header, "REC")
-        # Who's in the group: a small square per person, green while they're connected.
+        # Who's on the show: a small square per person, green while their camera is showing.
         self.people_row = tk.Frame(root, bg=BG, height=20)
         self.people_row.pack(fill="x", padx=12, pady=(8, 0))
         self.people_row.bind("<Configure>", lambda _e: self.flow_people())
@@ -218,10 +221,9 @@ class Deck:
         head = tk.Frame(body, bg=BG)
         head.pack(fill="x", pady=(10, 4))
         self.section(head, "LAYOUTS").pack(side="left")
-        if ADMIN:                              # always in view, however many layouts there are
-            new = tk.Label(head, text="＋ New layout", bg=BG, fg=LIT, font=LABEL_FONT, cursor="hand2", padx=8)
-            new.pack(side="left")
-            new.bind("<Button-1>", lambda _e: self.new_layout_box())
+        new = tk.Label(head, text="＋ New layout", bg=BG, fg=LIT, font=LABEL_FONT, cursor="hand2", padx=8)
+        new.pack(side="left")                  # always in view, however many layouts there are
+        new.bind("<Button-1>", lambda _e: self.new_layout_box())
         self.tabs_bar = tk.Frame(body, bg=BG)       # General, plus tabs of your own
         self.tabs_bar.pack(fill="x", pady=(0, 4))
         self.grid = tk.Frame(body, bg=BG)
@@ -237,23 +239,20 @@ class Deck:
         self.map.bind("<ButtonRelease-1>", self.map_release)
         under = tk.Frame(bottom, bg=BG)
         under.pack(fill="x", pady=(6, 0))
-        self.reset_button = self.small_key(under, "Reset camera" if ADMIN else "Reset my camera", self.reset_camera)
+        self.reset_button = self.small_key(under, "Reset camera", self.reset_camera)
         self.reset_button.pack(side="left")
         self.small_key(under, "Settings…", self.settings_box).pack(side="right")
-        if not ADMIN:
+        if sends_camera():                     # in a group, your own cam reaches your OBS through it too
             start = self.small_key(under, "Start my camera", self.start_camera)
             start.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
             start.pack(side="right", padx=4)
 
-        # Record: always on the admin deck, on guests' only with full control. Background, Paste link, and
-        # Play link are in each layout's + panel.
+        # Record. Background, Paste link, and Play link are in each layout's + panel.
         self.controls = tk.Frame(bottom, bg=BG)
         self.controls.pack(fill="x")
         self.rec = self.key(self.controls, "●  Record", self.toggle_record)
         self.rec.pack(fill="x", pady=(10, 12), ipady=8)
-        if not ADMIN and not self.full:
-            self.controls.pack_forget()
-        self.draw_people([])                   # Invite / Join shows before the first connection
+        self.draw_people()
 
     def section(self, parent, text):
         """A small uppercase section label, like the stream launcher's."""
@@ -280,20 +279,24 @@ class Deck:
         paint()
         configfile.update(THEME=theme.name)
         cfg.THEME = theme.name
+        self.redraw()
+        self.root.after(50, lambda: self.settings_box(tab="Look"))
+
+    def redraw(self):
+        """Build the window again (new colors, or the group changed what it shows)."""
         for w in self.root.winfo_children():
             w.destroy()
-        self.scenes, self.buttons = [], {}     # layout rows, their panel, and who's in are redrawn on the next draw
+        self.scenes, self.buttons = [], {}     # layout rows, their panel, and who's on are redrawn on the next draw
         self.panel_key = None
         self.build_ui()
         if self.last_state:
             self.render(self.last_state, None)
-        self.root.after(50, lambda: self.settings_box(tab="Look"))
 
     def on_mouse(self, event):
         if not isinstance(event, mouse.ButtonEvent) or event.event_type != mouse.DOWN:
             return
         action = cfg.MOUSE_BUTTONS.get(event.button)
-        if action is None or not self.can_control():
+        if action is None:
             return
         if action == "record":
             self.root.after(0, self.toggle_record)
@@ -304,18 +307,14 @@ class Deck:
         else:
             self.root.after(0, self.switch, action)
 
-    def can_control(self):
-        """Layouts, recording, background, video, and every camera: the admin, or guests given full control."""
-        return ADMIN or self.full
-
     def next_scene(self):
-        if not self.scenes or not self.can_control():
+        if not self.scenes:
             return
         order = self.ordered(self.scenes)      # the deck's own order, as dragged
         i = order.index(self.current) if self.current in order else -1
         self.switch(order[(i + 1) % len(order)])
 
-    # --- Talking to OBS (admin) or the admin's deck (guests) ----------------
+    # --- Talking to OBS -----------------------------------------------------
     def call(self, fn, then=None, quiet=False):
         """Run fn(backend) on a worker thread, then refresh the window.
 
@@ -342,51 +341,15 @@ class Deck:
         threading.Thread(target=work, daemon=True).start()
 
     def poll(self):
-        self.ensure_link()
         if self.backend is not None:
             self.call(lambda b: None)
         self.root.after(2000, self.poll)
 
-    def ensure_link(self):
-        """Admin: open the door for guests. Guest: connect to the admin's deck. Both over Tailscale only.
-
-        Tailscale may be started after the deck, so this keeps trying every ten seconds until it works.
-        """
-        need = (ADMIN and not (self.link and self.link.httpd)) or (not ADMIN and self.backend is None)
-        if not need or self.linking or time.monotonic() < self.next_link_try:
-            return
-        self.linking, self.next_link_try = True, time.monotonic() + 10
-
-        def work():
-            try:
-                result, problem = (link.LinkServer(self.backend, DECK_PORT) if ADMIN
-                                   else control.Remote(getattr(cfg, "INVITE", ""))), None
-            except DeckError as e:
-                result, problem = None, str(e)
-            self.root.after(0, done, result, problem)
-
-        def done(result, problem):
-            self.linking = False
-            if ADMIN:
-                self.link = result
-            elif result:
-                self.backend = result
-            else:
-                self.status.config(text=problem)
-        threading.Thread(target=work, daemon=True).start()
-
     def switch(self, name):
-        if self.can_control():
-            self.call(lambda b: b.switch(name))
+        self.call(lambda b: b.switch(name))
 
     def toggle_record(self):
-        if self.can_control():
-            self.call(lambda b: b.toggle_record())
-
-    def set_full(self, full):
-        self.call(lambda b: b.set_full(full),
-                  then=lambda _: self.say("Guests now have full control" if full
-                                          else "Guests can only move their own camera now"))
+        self.call(lambda b: b.toggle_record())
 
     def set_control_hotkeys(self, on):
         for hk in self.control_hotkeys:
@@ -403,7 +366,7 @@ class Deck:
 
     # --- Settings -----------------------------------------------------------
     def settings_box(self, tab=None):
-        """Admin: tabs for Cameras, Backgrounds, Guests, Hotkeys, Help, and Look. Guest: You, Hotkeys, Help, Look."""
+        """Tabs for Cameras, Backgrounds, Group, Hotkeys, Help, and Look."""
         win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
         win.title("Settings")
         win.attributes("-topmost", True)
@@ -439,86 +402,62 @@ class Deck:
             buttons[name].pack(side="left", padx=(0, 4))
             return pages[name]
 
-        if ADMIN:
-            cams_page = page("Cameras")
-            heading(cams_page, "Cameras", first=True)
-            note(cams_page, "Each camera's name sits on it in the show and moves with it.")
-            cams = tk.Frame(cams_page, bg=BG)
-            cams.pack(fill="x")
-            self.call(lambda b: b.devices(), then=lambda found: self.fill_devices(cams, found))
-            names = tk.BooleanVar(value=True)
-            tk.Checkbutton(cams_page, text="Show names on cams", variable=names, anchor="w", bg=BG, fg=INK_DIM,
-                           selectcolor=KEY, activebackground=BG, activeforeground=INK, font=STATUS_FONT,
-                           command=lambda: self.call(lambda b: b.set_name_tags(names.get()), then=lambda _: self.say(
-                               "Names shown on cams" if names.get() else "Names hidden"))).pack(fill="x", pady=(4, 0))
+        cams_page = page("Cameras")
+        heading(cams_page, "Cameras", first=True)
+        note(cams_page, "Each camera's name sits on it in the show and moves with it.")
+        cams = tk.Frame(cams_page, bg=BG)
+        cams.pack(fill="x")
+        self.call(lambda b: b.devices(), then=lambda found: self.fill_devices(cams, found))
+        names = tk.BooleanVar(value=True)
+        tk.Checkbutton(cams_page, text="Show names on cams", variable=names, anchor="w", bg=BG, fg=INK_DIM,
+                       selectcolor=KEY, activebackground=BG, activeforeground=INK, font=STATUS_FONT,
+                       command=lambda: self.call(lambda b: b.set_name_tags(names.get()), then=lambda _: self.say(
+                           "Names shown on cams" if names.get() else "Names hidden"))).pack(fill="x", pady=(4, 0))
 
-            heading(cams_page, "Default camera spots")
-            note(cams_page, "Moving a camera on the map only lasts for this session; each session starts from the "
-                            "defaults. To change the defaults, place the cameras where you want them, then save.")
-            row = tk.Frame(cams_page, bg=BG)
-            row.pack(fill="x", pady=(4, 0))
-            self.small_key(row, "Save camera spots as default", lambda: self.call(
-                lambda b: b.save_defaults(), then=lambda _: self.say("Camera spots saved as default"))).pack(side="left")
-            self.small_key(row, "Reset cameras to default", lambda: self.call(
-                lambda b: b.reset_all(), then=lambda _: self.say("Cameras back on their default spots"))).pack(
-                side="left", padx=6)
+        heading(cams_page, "Default camera spots")
+        note(cams_page, "Moving a camera on the map only lasts for this session; each session starts from the "
+                        "defaults. To change the defaults, place the cameras where you want them, then save.")
+        row = tk.Frame(cams_page, bg=BG)
+        row.pack(fill="x", pady=(4, 0))
+        self.small_key(row, "Save camera spots as default", lambda: self.call(
+            lambda b: b.save_defaults(), then=lambda _: self.say("Camera spots saved as default"))).pack(side="left")
+        self.small_key(row, "Reset cameras to default", lambda: self.call(
+            lambda b: b.reset_all(), then=lambda _: self.say("Cameras back on their default spots"))).pack(
+            side="left", padx=6)
 
-            heading(cams_page, "Repair")
-            note(cams_page, "Deleted something in OBS by accident? Repair layouts puts back every source and layout "
-                            "the deck made, and rebuilds the layouts. Your own scenes aren't touched. Cameras go "
-                            "back to their default spots. Also use it after changing config.py.")
-            row = tk.Frame(cams_page, bg=BG)
-            row.pack(fill="x", pady=(4, 0))
-            self.small_key(row, "Repair layouts", self.repair).pack(side="left")
-            self.small_key(row, "Bring back deleted layouts", lambda: self.call(
-                lambda b: b.restore_layouts(), then=lambda _: self.say("Deleted layouts are back"))).pack(side="left", padx=6)
+        heading(cams_page, "Repair")
+        note(cams_page, "Deleted something in OBS by accident? Repair layouts puts back every source and layout "
+                        "the deck made, and rebuilds the layouts. Your own scenes aren't touched. Cameras go "
+                        "back to their default spots. Also use it after changing config.py.")
+        row = tk.Frame(cams_page, bg=BG)
+        row.pack(fill="x", pady=(4, 0))
+        self.small_key(row, "Repair layouts", self.repair).pack(side="left")
+        self.small_key(row, "Bring back deleted layouts", lambda: self.call(
+            lambda b: b.restore_layouts(), then=lambda _: self.say("Deleted layouts are back"))).pack(side="left", padx=6)
 
-            bg_page = page("Backgrounds")
-            heading(bg_page, "Empty video box", first=True)
-            note(bg_page, "What the Video + Cams box shows when no video is playing.")
-            idle = tk.Frame(bg_page, bg=BG)
-            idle.pack(fill="x", pady=(4, 0))
-            self.call(lambda b: b.options(), then=lambda found: self.fill_idle(idle, found))
+        bg_page = page("Backgrounds")
+        heading(bg_page, "Empty video box", first=True)
+        note(bg_page, "What the Video + Cams box shows when no video is playing.")
+        idle = tk.Frame(bg_page, bg=BG)
+        idle.pack(fill="x", pady=(4, 0))
+        self.call(lambda b: b.options(), then=lambda found: self.fill_idle(idle, found))
 
-            heading(bg_page, "Backgrounds for each layout")
-            note(bg_page, "Switching to a layout puts up its default background. Tick extras to have them at the "
-                          "top of Background ▾ on that layout. Add picture… saves your own.")
-            pics = tk.Frame(bg_page, bg=BG)
-            pics.pack(fill="x", pady=(8, 0))
-            self.call(lambda b: b.options(), then=lambda found: self.fill_options(pics, names, found))
+        heading(bg_page, "Backgrounds for each layout")
+        note(bg_page, "Switching to a layout puts up its default background. Tick extras to have them at the "
+                      "top of Background ▾ on that layout. Add picture… saves your own.")
+        pics = tk.Frame(bg_page, bg=BG)
+        pics.pack(fill="x", pady=(8, 0))
+        self.call(lambda b: b.options(), then=lambda found: self.fill_options(pics, names, found))
 
-            guests_page = page("Guests")
-            heading(guests_page, "Guests", first=True)
-            on = self.link and self.link.httpd
-            note(guests_page, f"Guests connect over Tailscale ({self.link.ip}). Send each person their own invite, "
-                              "privately." if on else "Tailscale isn't running on this PC, so guests can't connect "
-                              "yet. Start Tailscale; the deck notices within ten seconds.", INK_DIM if on else REC)
-            rows = tk.Frame(guests_page, bg=BG)
-            rows.pack(fill="x", pady=(4, 0))
-            self.fill_guests(rows, on)
-            heading(guests_page, "Full control")
-            note(guests_page, "Off: guests can only move their own camera. On: they get every control here "
-                              "(layouts, Record, backgrounds, videos, every camera). Only you can change this.")
-            full = tk.BooleanVar(value=self.full)
-            tk.Checkbutton(guests_page, text="Guests get full control", variable=full, anchor="w",
-                           command=lambda: self.set_full(full.get()), bg=BG, fg=INK, selectcolor=KEY,
-                           activebackground=BG, activeforeground=INK, font=STATUS_FONT).pack(fill="x", pady=(4, 0))
-        else:
-            you_page = page("You")
-            heading(you_page, "Your name", first=True)
-            note(you_page, "Shown on your camera and on everyone's screen map.")
-            row = tk.Frame(you_page, bg=BG)
-            row.pack(fill="x", pady=(4, 0))
-            name_box = tk.Entry(row, width=28, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
-            name_box.insert(0, getattr(cfg, "DISPLAY_NAME", "") or (self.me or "").removeprefix("Cam - "))
-            name_box.pack(side="left", ipady=5)
-            save = lambda _e=None: self.set_display_name(name_box.get())
-            name_box.bind("<Return>", save)
-            self.small_key(row, "Save", save).pack(side="left", padx=6)
-
-            heading(you_page, "Invite")
-            note(you_page, "Got a new code from the admin? Paste it with Invite / Join at the top.")
-            self.small_key(you_page, "Invite / Join…", lambda: (win.destroy(), self.group_box())).pack(anchor="w", pady=(4, 0))
+        group_page = page("Group")
+        heading(group_page, "This PC", first=True)
+        note(group_page, "Record: this PC runs your own show with OBS. Camera only: you just send your camera to "
+                         "the group. Either way, nobody controls anyone else's OBS.")
+        self.small_key(group_page, "Switch to camera only…", self.switch_mode).pack(anchor="w", pady=(4, 0))
+        heading(group_page, "Your group")
+        note(group_page, "Invite / Join at the top makes the group link, adds people, or joins another group.")
+        self.small_key(group_page, "Invite / Join…", lambda: (win.destroy(), self.group_box())).pack(
+            anchor="w", pady=(4, 0))
 
         keys_page = page("Hotkeys")
         heading(keys_page, "Hotkeys", first=True)
@@ -530,7 +469,7 @@ class Deck:
 
         help_page = page("Help")
         heading(help_page, "Help", first=True)
-        note(help_page, "How hosts joining online works, what each deck can do, and how it's kept safe.")
+        note(help_page, "How the group works, what each deck can do, and how it's kept safe.")
         self.small_key(help_page, "How it works", lambda: subprocess.Popen(["notepad.exe", NOTES])).pack(
             anchor="w", pady=(4, 0))
 
@@ -685,72 +624,17 @@ class Deck:
             self.say(f"{os.path.splitext(name)[0]} saved for {layout}"),
             self.call(lambda b: b.options(), then=lambda found: self.fill_options(frame, names, found))))
 
-    def fill_guests(self, rows, on):
-        for w in rows.winfo_children():
-            w.destroy()
-        invites = link.load_invites()
-        for r, name in enumerate(n for n in cfg.CAMS if f"Cam - {n}" != self.me):
-            shown = self.names.get(name)
-            tk.Label(rows, text=f"{name} · {shown}" if shown else name, bg=BG, fg=INK, font=STATUS_FONT,
-                     anchor="w").grid(row=r, column=0, sticky="w")
-            tk.Label(rows, text="invited" if name in invites else "not invited", bg=BG, fg=INK_DIM,
-                     font=STATUS_FONT).grid(row=r, column=1, padx=10)
-            copy = self.small_key(rows, "Copy invite", lambda n=name: self.copy_invite(rows, on, n, fresh=False))
-            copy.config(state="normal" if on else "disabled")
-            copy.grid(row=r, column=2, pady=2)
-            if name in invites:
-                self.small_key(rows, "New", lambda n=name: self.copy_invite(rows, on, n, fresh=True)).grid(
-                    row=r, column=3, padx=4)
-                self.small_key(rows, "Remove", lambda n=name: self.remove_invite(rows, on, n)).grid(row=r, column=4)
-
-    def copy_invite(self, rows, on, name, fresh):
-        code = link.load_invites().get(name)
-        if fresh or not code:
-            code = link.new_invite(name)
-        self.root.clipboard_clear()
-        self.root.clipboard_append(link.invite_text(self.link.ip, DECK_PORT, code))
-        self.say(f"Invite for {name} copied. Send it to them privately."
-                 + (" Their old invite no longer works." if fresh else ""), seconds=8)
-        self.fill_guests(rows, on)
-
-    def remove_invite(self, rows, on, name):
-        link.remove_invite(name)
-        self.say(f"{name}'s invite removed. Their deck can't connect any more.", seconds=8)
-        self.fill_guests(rows, on)
-
-    def use_invite(self, text):
-        """Guest: save an invite and reconnect with it."""
-        configfile.update(INVITE=text)
-        cfg.INVITE = text
-        self.backend, self.next_link_try = None, 0.0
-        self.people_shown = None
-        self.say("Invite saved. Connecting…")
-
-    def set_display_name(self, text):
-        """Guest: the name shown on your camera. Saved here and sent to the admin's deck."""
-        shown = positions.clean_display_name(text)
-        configfile.update(DISPLAY_NAME=shown)
-        cfg.DISPLAY_NAME = shown
-        if self.backend is None:
-            self.say("Name saved. It's sent when your deck connects.")
-            return
-        self.call(lambda b: b.set_display_name(shown), then=lambda now: self.say(f"Your camera now shows: {now}"))
-
-    # --- Camera (guest) ----------------------------------------------------
+    # --- Your camera ---------------------------------------------------------
     def start_camera(self):
-        """Guest: send your camera and mic with VDO.Ninja, and have the admin's deck put it in the show."""
-        cam_id = getattr(cfg, "CAMERA_ID", "") or link.new_camera_id()
-        if cam_id != getattr(cfg, "CAMERA_ID", ""):
-            configfile.update(CAMERA_ID=cam_id)
-            cfg.CAMERA_ID = cam_id
-        webbrowser.open(link.vdo_push(cam_id))
-        if self.backend is None:
-            self.say("Opened your camera page. It's added to the show once your deck connects; click again then.")
+        """Send your camera and mic to the group: a VDO.Ninja page in the browser. Everyone recording shows it
+        in their own OBS (and so does yours). Keep the tab open while you're on the show."""
+        group, me = getattr(cfg, "GROUP", ""), getattr(cfg, "ME", "")
+        if not (group and me):
+            self.tell("Join a group first: Invite / Join at the top.")
             return
-        self.call(lambda b: b.camera(cam_id), then=lambda msg: self.say(
-            f"Opened your camera page: allow the camera and mic there. {msg}", seconds=10))
+        webbrowser.open(link.vdo_push(link.camera_id(group, me), me))
+        self.say("Your camera page opened. Allow the camera and mic, and keep that tab open while you're on.", 10)
 
-    # --- Screen map --------------------------------------------------------
     def scale(self):
         return self.map.winfo_width() / self.canvas[0]
 
@@ -761,7 +645,7 @@ class Deck:
         self.draw_map()
 
     def movable(self, name):
-        return name.startswith("Cam - ") and (self.can_control() or name == self.me)
+        return name.startswith("Cam - ")
 
     def draw_map(self):
         c, s = self.map, self.scale()
@@ -900,26 +784,21 @@ class Deck:
                 for pic in others:
                     item(pic)
                 m.add_separator()
-            if ADMIN:
-                m.add_command(label="Add picture…", command=self.add_background)
+            m.add_command(label="Add picture…", command=self.add_background)
             m.add_command(label=("✓  " if not current else "     ") + "Plain color",
                           command=lambda: self.set_background(""))
-            if ADMIN:
-                m.add_command(label="Open backgrounds folder", command=self.open_backgrounds)
-            else:
-                m.add_command(label="New pictures are added on the admin's deck", state="disabled")
+            m.add_command(label="Open backgrounds folder", command=self.open_backgrounds)
             b = self.bg_button
             m.tk_popup(b.winfo_rootx(), b.winfo_rooty() + b.winfo_height())
         self.call(lambda b: b.backgrounds(), then=show)
 
     def set_background(self, path):
-        """Show a picture. On the admin's deck it also becomes the live layout's default, so switching away
-        and back keeps it."""
+        """Show a picture. It also becomes the live layout's default, so switching away and back keeps it."""
         name = os.path.splitext(os.path.basename(path))[0] if path else "plain color"
 
         def work(b):
             b.set_background(path)
-            return b.make_default(path) if ADMIN and path else None
+            return b.make_default(path) if path else None
         self.call(work, then=lambda layout: self.say(f"Background: {name}" + (f", saved for {layout}" if layout else "")))
 
     def add_background(self):
@@ -939,11 +818,9 @@ class Deck:
 
     def next_background(self):
         """Hotkey: step to the next saved picture."""
-        if not self.can_control():
-            return
         self.call(lambda b: b.next_background(), quiet=True, then=lambda nxt: self.say(
             f"Background: {os.path.splitext(os.path.basename(nxt))[0]}" if nxt
-            else "No saved backgrounds yet. Use Background ▾ → Add picture… on the admin's deck first."))
+            else "No saved backgrounds yet. Use Background ▾ → Add picture… first."))
 
     # --- Pasted background (picture or video) --------------------------------
     def bg_link_box(self):
@@ -978,10 +855,6 @@ class Deck:
                 return
             kind = found["kind"]
             if kind == "picture_file":
-                if not ADMIN:
-                    note.config(text="Pictures from your PC can only be added on the admin's deck. "
-                                     "Paste a picture link instead.", fg=REC)
-                    return
                 try:
                     self.set_background(media.add_background(found["path"]))
                 except OSError as e:
@@ -1063,7 +936,7 @@ class Deck:
 
     # Called by the local server (bgcontrol.py), from its own thread.
     def live_state(self, channel):
-        return self.backend.live(channel) if ADMIN and isinstance(self.backend, control.Local) else None
+        return self.backend.live(channel) if isinstance(self.backend, control.Local) else None
 
     def page_colors(self):
         """The color scheme, as CSS variables, for the browser control pages."""
@@ -1071,7 +944,7 @@ class Deck:
 
     def idle_state(self):
         """What the empty Video + Cams box shows (admin only): {"text", "picture"}."""
-        if not (ADMIN and isinstance(self.backend, control.Local)):
+        if not isinstance(self.backend, control.Local):
             return None
         try:
             return self.backend.video_idle()
@@ -1105,7 +978,7 @@ class Deck:
 
     def closing(self):
         """Closing the admin's deck stops both videos in OBS, so nothing keeps playing without a way to stop it."""
-        if ADMIN and isinstance(self.backend, control.Local):
+        if isinstance(self.backend, control.Local):
             for put in (self.backend.set_video, self.backend.set_bg_video):
                 try:
                     put(None)
@@ -1218,50 +1091,33 @@ class Deck:
     def render(self, state, error):
         if error:
             self.status.config(text=error)
-            self.set_pill(self.obs_pill, BAD, "OBS OFFLINE" if ADMIN else "ADMIN OFFLINE")
+            self.set_pill(self.obs_pill, BAD, "OBS OFFLINE")
             self.rec_pill["frame"].pack_forget()
             return
         self.last_state = state
-        self.set_pill(self.obs_pill, OK, "OBS" if ADMIN else "ADMIN")
-        if not ADMIN:
-            you = state.get("you")
-            self.me = f"Cam - {you}" if you else None
-            if self.selected is None:
-                self.selected = self.me
-            mine = getattr(cfg, "DISPLAY_NAME", "")
-            if you and mine and not self.sent_name:    # tell the admin's deck our name once per session
-                self.sent_name = True
-                self.call(lambda b: b.set_display_name(mine))
+        self.set_pill(self.obs_pill, OK, "OBS")
         self.names = state.get("names") or {}
-        if not ADMIN:
-            you = state.get("you")
-            self.root.title(f"Deck · {self.names.get(you) or you}" if you else "Deck · guest")
         if state.get("note"):
             self.say(state["note"], seconds=10)
         self.now = state.get("now") or {}
-        self.draw_people(state.get("people") or [])
+        self.live = state.get("live") or {}
+        self.draw_people()
         if state["current"] != self.current:   # a layout went live: its panel opens by itself
             self.open_layout = state["current"]
         self.canvas = tuple(state["canvas"])
-        full = state["full"]
-        self.full = full
-        if not ADMIN and full != self.built_full:
-            self.guest_controls(full)
         meta = state.get("meta") or self.meta
-        if (state["scenes"] != self.scenes or meta != self.meta or not self.buttons
-                or (not ADMIN and full != self.built_full)):
+        if state["scenes"] != self.scenes or meta != self.meta or not self.buttons:
             self.meta = meta
             if self.tab not in meta["tabs"]:
                 self.tab = positions.GENERAL
             self.current = state["current"]
             self.rebuild(state["scenes"])
-        self.built_full = full
         self.current, self.recording = state["current"], state["recording"]
         if not self.drag and time.monotonic() >= self.hold_until:  # don't snap a camera back mid-move
             self.items = state["items"]
             self.draw_map()
         rec_txt = "Recording" if self.recording else "Not recording"
-        if self.recording and self.can_control() and cfg.RECORD_HOTKEY:
+        if self.recording and cfg.RECORD_HOTKEY:
             rec_txt += f" ({cfg.RECORD_HOTKEY})"
         if time.monotonic() >= self.notice_until:
             self.status.config(text=f"{self.current}  ·  {rec_txt}")
@@ -1280,23 +1136,6 @@ class Deck:
                         bg=REC if self.recording else KEY, fg="#FFFFFF" if self.recording else INK,
                         activebackground=REC if self.recording else KEY_HOVER)
 
-    def guest_controls(self, full):
-        """Guest deck: show or hide the admin's controls when full control is turned on or off."""
-        if full:
-            self.controls.pack(fill="x", after=self.reset_button.master)
-            self.root.geometry(f"{self.root.winfo_width()}x880")
-            self.reset_button.config(text="Reset camera")
-            if self.built_full is not None:
-                self.say("The admin gave you full control")
-        else:
-            self.controls.pack_forget()
-            self.root.geometry(f"{self.root.winfo_width()}x600")
-            self.reset_button.config(text="Reset my camera")
-            self.selected = self.me
-            if self.built_full:
-                self.say("Full control turned off: you can move your own camera")
-        self.set_control_hotkeys(full)
-
     def ordered(self, scenes):
         """Layouts in the order they were dragged into; new ones go at the end, in OBS's order."""
         order = [n for n in self.meta.get("order", []) if n in scenes]
@@ -1313,7 +1152,7 @@ class Deck:
         for hk in self.hotkeys:
             keyboard.remove_hotkey(hk)
         self.hotkeys, self.buttons = [], {}
-        live = self.can_control()
+        live = True
         keys = self.layout_hotkeys()
         if live:
             for name, combo in keys.items():
@@ -1339,7 +1178,7 @@ class Deck:
                                   font=FONT, cursor="hand2", width=2)
                 toggle.pack(side="right", padx=(0, 6))
                 toggle.bind("<Button-1>", lambda _e, n=name: self.toggle_panel(n) or "break")
-            dots = tk.Label(row, text="⋯", bg=NAV, fg=NAV, font=FONT, cursor="hand2") if ADMIN else None
+            dots = tk.Label(row, text="⋯", bg=NAV, fg=NAV, font=FONT, cursor="hand2")
             if dots:
                 dots.pack(side="right")
                 dots.bind("<Button-1>", lambda e, n=name: self.layout_menu(n, e) or "break")
@@ -1352,8 +1191,7 @@ class Deck:
                     w.bind("<ButtonRelease-1>", lambda e, n=name: self.row_release(n, e))
                 w.bind("<Enter>", lambda _e, n=name: self.paint_row(n, hover=True))
                 w.bind("<Leave>", lambda _e, n=name: self.paint_row(n))
-                if ADMIN:
-                    w.bind("<Button-3>", lambda e, n=name: self.layout_menu(n, e))
+                w.bind("<Button-3>", lambda e, n=name: self.layout_menu(n, e))
             self.paint_row(name)
         if not self.buttons:
             tk.Label(self.grid, text="No layouts in this tab yet. Click ＋ New layout above, or use a layout's ⋯ → Tab.",
@@ -1411,7 +1249,7 @@ class Deck:
 
     def row_drag(self, name, e):
         d = getattr(self, "row_drag_state", None)
-        if not d or not ADMIN or abs(e.y_root - d["y"]) < 6:
+        if not d or abs(e.y_root - d["y"]) < 6:
             return
         d["moving"] = True
         rows = [r["row"] for r in self.buttons.values()]
@@ -1442,27 +1280,24 @@ class Deck:
         self.call(lambda b: b.set_order(order), then=lambda _: self.say(f"{name} moved"))
 
     def draw_tabs(self):
-        """General, your own tabs, and ＋ (admin) to make another. Right-click a tab to rename or delete it."""
+        """General, your own tabs, and ＋ to make another. Right-click a tab to rename or delete it."""
         for w in self.tabs_bar.winfo_children():
             w.destroy()
         tabs = self.meta["tabs"]
-        if len(tabs) == 1 and not ADMIN:
-            return                             # just General: no strip needed
         for tab in tabs:
             on = tab == self.tab
             t = tk.Label(self.tabs_bar, text=tab, bg=LIT if on else NAV, fg=LIT_INK if on else INK_DIM,
                          font=STATUS_FONT + ("bold",), padx=10, pady=3, cursor="hand2")
             t.pack(side="left", padx=(0, 4))
             t.bind("<Button-1>", lambda _e, tb=tab: self.show_tab(tb))
-            if ADMIN and tab != positions.GENERAL:
+            if tab != positions.GENERAL:
                 t.bind("<Button-3>", lambda e, tb=tab: self.tab_menu(tb, e))
-        if ADMIN:
-            plus = tk.Label(self.tabs_bar, text="＋ Tab", bg=NAV, fg=INK_DIM, font=STATUS_FONT + ("bold",), padx=8,
-                            pady=3, cursor="hand2")
-            plus.pack(side="left")
-            plus.bind("<Button-1>", lambda _e: self.ask_text("New tab", "Name the tab (for example: Solo, 4 people):", "",
-                                                             lambda name: self.call(lambda b: b.add_tab(name),
-                                                                                    then=lambda made: self.show_tab(made))))
+        plus = tk.Label(self.tabs_bar, text="＋ Tab", bg=NAV, fg=INK_DIM, font=STATUS_FONT + ("bold",), padx=8,
+                        pady=3, cursor="hand2")
+        plus.pack(side="left")
+        plus.bind("<Button-1>", lambda _e: self.ask_text("New tab", "Name the tab (for example: Solo, 4 people):", "",
+                                                         lambda name: self.call(lambda b: b.add_tab(name),
+                                                                                then=lambda made: self.show_tab(made))))
 
     def show_tab(self, tab):
         self.tab = tab
@@ -1626,7 +1461,7 @@ class Deck:
         if background is not None:
             BACKGROUND_HOTKEY = cfg.BACKGROUND_HOTKEY = values["BACKGROUND_HOTKEY"] = background
         configfile.update(**values)
-        self.set_control_hotkeys(self.can_control())
+        self.set_control_hotkeys(True)
         self.rebuild(self.scenes)
         self.refresh_panel()
 
@@ -1673,7 +1508,7 @@ class Deck:
                 if combo in ("esc", "escape") or (other and other != name) or not frame.winfo_exists():
                     if other and other != name:
                         self.say(f"{combo} is already used by {other}. Clear that one first.", 8)
-                    self.set_control_hotkeys(self.can_control())   # put everything back as it was
+                    self.set_control_hotkeys(True)   # put everything back as it was
                     self.rebuild(self.scenes)
                     if frame.winfo_exists():
                         self.fill_hotkeys(frame)
@@ -1711,7 +1546,7 @@ class Deck:
     def refresh_panel(self):
         """Draw the open layout's panel under its row, once that layout is live. Only redrawn when
         something in it changes, so a click isn't lost to the poll."""
-        show = (self.open_layout == self.current and self.open_layout in self.buttons and self.can_control())
+        show = self.open_layout == self.current and self.open_layout in self.buttons
         has_video = any(i["name"] == "Video Panel" for i in self.items)
         key = (show and self.open_layout, tuple(sorted(self.now.items())) if show else None, self.pending_bg, has_video,
                show and self.layout_hotkeys().get(self.open_layout))
@@ -1746,8 +1581,7 @@ class Deck:
         buttons = [("Background ▾", self.background_menu), ("Paste link", self.bg_link_box)]
         if has_video:                          # only where there's a video box to play in
             buttons.append(("Play link…", self.play_link))
-        if ADMIN:
-            buttons.append(("Save layout", self.save_layout))
+        buttons.append(("Save layout", self.save_layout))
         for i, (label, cmd) in enumerate(buttons):
             b = self.small_key(keys, label, cmd)
             b.config(padx=6, anchor="center")
@@ -1758,24 +1592,30 @@ class Deck:
         keys.columnconfigure(0, weight=1)
         keys.columnconfigure(1, weight=1)
 
-    # --- Who's in -------------------------------------------------------------
-    def draw_people(self, people):
-        """The row under the header: a small square per person, green while connected, gray while not, and
-        Invite / Join on the right. Admin: click a name for their invite, or to remove them."""
-        shown = [(p["name"], self.names.get(p["name"]) or p["name"], bool(p["online"])) for p in people]
+    # --- Who's on the show ----------------------------------------------------
+    def show_people(self):
+        """(name, square color) for the row at the top: everyone on your show and in your group. Green while
+        their camera is showing in your OBS, gray while it isn't."""
+        names = link.clean_names(list(cfg.CAMS) + group_people())
+        return [(n, OK if self.live.get(n) else MUTED) for n in names]
+
+    def draw_people(self):
+        """The row under the header: a small square and name per person, and Invite / Join on the right.
+        Click a name to take them off your show."""
+        shown = [(name, self.names.get(name) or name, color) for name, color in self.show_people()]
         if shown == self.people_shown:
             return
         self.people_shown = shown
         for w in self.people_row.winfo_children():
             w.destroy()
         self.people_items = []
-        for name, label, online in shown:
+        for name, label, color in shown:
             item = tk.Frame(self.people_row, bg=BG)
-            square = tk.Frame(item, bg=OK if online else MUTED, width=9, height=9)
+            square = tk.Frame(item, bg=color, width=9, height=9)
             square.pack(side="left", padx=(0, 5))
-            text = tk.Label(item, text=label, bg=BG, fg=INK if online else MUTED, font=STATUS_FONT)
+            text = tk.Label(item, text=label, bg=BG, fg=INK if color != MUTED else INK_DIM, font=STATUS_FONT)
             text.pack(side="left", padx=(0, 12))
-            if ADMIN and f"Cam - {name}" != self.me:
+            if name != getattr(cfg, "ME", ""):
                 for w in (item, square, text):
                     w.config(cursor="hand2")
                     w.bind("<Button-1>", lambda e, n=name: self.person_menu(n, e))
@@ -1786,7 +1626,7 @@ class Deck:
         self.flow_people()
 
     def flow_people(self):
-        """Lay out the who's-in row: Invite / Join on the right, names left to right beside it, wrapping onto
+        """Lay out the who's-on row: Invite / Join on the right, names left to right beside it, wrapping onto
         more lines when the window is narrow."""
         if getattr(self, "flowing", False):
             return
@@ -1817,38 +1657,34 @@ class Deck:
             self.people_row.config(height=height)
 
     def person_menu(self, name, event):
-        """Admin: click someone in the row. Copy their invite, give them a new one, or take them out."""
+        """Click someone in the row: take them off your show (their own deck isn't affected)."""
         m = self.menu()
         m.add_command(label=name, state="disabled")
-        invited = name in link.load_invites()
-        m.add_command(label="Copy invite link", command=lambda: self.copy_person_invite(name, fresh=False))
-        if invited:
-            m.add_command(label="New invite (the old one stops working)",
-                          command=lambda: self.copy_person_invite(name, fresh=True))
-        m.add_separator()
-        m.add_command(label="Remove from the group…", foreground=REC, command=lambda: self.remove_person(name))
+        m.add_command(label="Remove from my show…", foreground=REC, command=lambda: self.remove_person(name))
         m.tk_popup(event.x_root, event.y_root)
 
-    def copy_person_invite(self, name, fresh):
-        """Put someone's invite link on the clipboard: a web page that walks them through Tailscale and the
-        download, then opens the invite in their deck. Returns it, or None if Tailscale isn't running here."""
-        if not (self.link and self.link.httpd):
-            self.tell("Tailscale isn't running on this PC, so there's no invite to send yet. Start Tailscale, wait "
-                      "ten seconds, and try again.")
-            return None
-        code = link.load_invites().get(name)
-        if fresh or not code:
-            code = link.new_invite(name)
-        text = link.join_link(link.invite_text(self.link.ip, DECK_PORT, code), self.shares.get(name, ""))
-        self.root.clipboard_clear()
-        self.root.clipboard_append(text)
-        self.say(f"Invite link for {name} copied. Send it to them privately."
-                 + (" Their old invite no longer works." if fresh else ""), seconds=8)
-        return text
+    def remove_person(self, name):
+        """Take someone off your show: their camera leaves your layouts, and your group link leaves them out."""
+        if not messagebox.askyesno("Podcast Deck", f"Take {name} off your show?\n\nTheir camera leaves your layouts. "
+                                   "Their own deck isn't affected.", parent=self.root):
+            return
+        if name in getattr(cfg, "GROUP_PEOPLE", []):
+            cfg.GROUP_PEOPLE = [n for n in cfg.GROUP_PEOPLE if n != name]
+        if name in cfg.CAMS:
+            cfg.CAMS = [n for n in cfg.CAMS if n != name]
+        configfile.update(CAMS=cfg.CAMS, GROUP_PEOPLE=list(getattr(cfg, "GROUP_PEOPLE", [])))
+        self.people_shown = None
+        self.layouts_changed(f"{name} is off your show.")
 
+    def layouts_changed(self, message):
+        """Your show's people changed: rebuild your layouts with their cameras (after the recording, if one
+        is running)."""
+        self.draw_people()
+        self.call(lambda b: b.rebuild_soon(), then=lambda msg: self.say(f"{message} {msg}", 8))
+
+    # --- The group ---------------------------------------------------------------
     def group_box(self):
-        """Invite / Join: admin invites someone (a name in, a code out); a guest pastes a code to join. Either
-        can switch this PC to the other role."""
+        """Invite / Join: the group link to send everyone, adding someone, and joining another group."""
         win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
         win.title("Invite / Join")
         win.attributes("-topmost", True)
@@ -1865,122 +1701,175 @@ class Deck:
             label.pack(fill="x", pady=(4, 0))
             return label
 
-        def box(value=""):
-            e = tk.Entry(win, width=44, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+        def box(value="", readonly=False):
+            e = tk.Entry(win, width=44, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT,
+                         readonlybackground=KEY)
             e.insert(0, value)
+            if readonly:
+                e.config(state="readonly")
             e.pack(fill="x", pady=(6, 0), ipady=6)
             return e
 
+        group = getattr(cfg, "GROUP", "")
+        heading("Invite people", first=True)
+        if group:
+            say("Send this link to everyone on the show. It's the same for everyone, and it walks them through "
+                "downloading the deck and joining. Keep it within the group.")
+            link_box = box(link.group_link(group, group_people()), readonly=True)
+            row = tk.Frame(win, bg=BG)
+            row.pack(fill="x", pady=(6, 0))
+            self.small_key(row, "Copy link", lambda: self.copy_group_link()).pack(side="left")
+            self.small_key(row, "New link…", lambda: self.new_group_link(win)).pack(side="left", padx=6)
+        else:
+            say("Start a group, then send its link to everyone on the show.")
+            link_box = None
+            self.small_key(win, "Start a group", lambda: (self.start_group(), win.destroy(), self.group_box())).pack(
+                anchor="w", pady=(6, 0))
+
+        heading("Add someone")
+        say("Their name, as they'll type it when they join:")
+        name_box = box()
+        here = tk.BooleanVar(value=False)
+        if RECORD:
+            tk.Checkbutton(win, text="They're here with me (their camera is on this PC)", variable=here, bg=BG,
+                           fg=INK_DIM, selectcolor=KEY, activebackground=BG, activeforeground=INK, font=STATUS_FONT,
+                           anchor="w").pack(fill="x", pady=(4, 0))
+        note = say("", REC)
+
+        def add(_e=None):
+            name = link.clean_names([name_box.get()])
+            if not name:
+                note.config(text="Type their name first.")
+                return
+            name = name[0]
+            if any(n.casefold() == name.casefold() for n in list(cfg.CAMS) + group_people()):
+                note.config(text=f"{name} is already on your show.")
+                return
+            self.add_person(name, joining=not here.get())
+            win.destroy()
+        self.small_key(win, "Add", add).pack(anchor="w", pady=(6, 0))
+        name_box.bind("<Return>", add)
+
+        heading("Join a group")
+        say("Got a group link from someone? Paste it here." + (" You'll leave your current group." if group else ""))
         try:
             clip = self.root.clipboard_get().strip()
         except tk.TclError:
             clip = ""
-        pasted = find_invite(clip) or ""
+        code_box = box(find_invite(clip) or "")
+        code_note = say("")
 
-        def join(entry, note):
-            text = find_invite(entry.get())
+        def join(_e=None):
+            text = find_invite(code_box.get())
             if not text:
-                note.config(text="That doesn't look like an invite. Paste the whole link or code from the admin.",
-                            fg=REC)
+                code_note.config(text="That doesn't look like a group link. Paste the whole link.", fg=REC)
                 return
-            if ADMIN:
-                if not messagebox.askyesno("Podcast Deck", "Join their group? This PC stops running the show and "
-                                           "becomes a guest on theirs. Your layouts in OBS aren't touched, and you "
-                                           "can start your own group again from here.", parent=win):
-                    return
-                configfile.update(ADMIN=False, INVITE=text)
-                self.restart()
-                return
-            self.use_invite(text)
             win.destroy()
-
-        if ADMIN:
-            heading("Invite someone", first=True)
-            say("Their name (it's on their camera; they can change what's shown later):")
-            name_box = box()
-            name_box.focus_set()
-            online = tk.BooleanVar(value=True)
-            tk.Checkbutton(win, text="They're joining from somewhere else (give them a code)", variable=online,
-                           bg=BG, fg=INK_DIM, selectcolor=KEY, activebackground=BG, activeforeground=INK,
-                           font=STATUS_FONT, anchor="w").pack(fill="x", pady=(4, 0))
-            note = say("", REC)
-
-            def add(_e=None):
-                name = " ".join(name_box.get().split())[:24]
-                if not name:
-                    note.config(text="Type their name first.")
-                    return
-                if any(n.lower() == name.lower() for n in cfg.CAMS):
-                    note.config(text=f"{name} is already in the group. Click their name for their code.")
-                    return
-                cfg.CAMS = list(cfg.CAMS) + [name]
-                configfile.update(CAMS=cfg.CAMS)
-                self.people_shown = None
-                self.call(lambda b: b.rebuild_soon(), then=lambda msg: self.say(f"{name} added. {msg}", 8))
-                if online.get():
-                    self.invite_sent_box(win, name)
-                else:
-                    win.destroy()
-            go = self.small_key(win, "Invite", add)
-            go.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
-            go.pack(anchor="w", pady=(6, 0))
-            name_box.bind("<Return>", add)
-
-            heading("Got a code from someone else?")
-            say("Join their group instead. This PC becomes a guest on theirs.")
-            code_box = box(pasted)
-            code_note = say("")
-            self.small_key(win, "Join their group", lambda: join(code_box, code_note)).pack(anchor="w", pady=(6, 0))
-        else:
-            heading("Join a group", first=True)
-            say("Paste the invite link or code the admin sent you. (Clicking Join on the invite link's page does this "
-                "for you.)")
-            if link.tailscale_ip() is None:
-                say("Tailscale isn't running on this PC yet. Install it, sign in, and accept the admin's share link.",
-                    REC)
-                self.small_key(win, "Get Tailscale", lambda: webbrowser.open("https://tailscale.com/download")).pack(
-                    anchor="w", pady=(4, 0))
-            code_box = box(pasted)
-            code_box.focus_set()
-            code_note = say("")
-            go = self.small_key(win, "Join", lambda: join(code_box, code_note))
-            go.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK)
-            go.pack(anchor="w", pady=(6, 0))
-            code_box.bind("<Return>", lambda _e: join(code_box, code_note))
-
-            heading("Running OBS on this PC?")
-            say("Start your own group. This PC runs the show, and you invite the others.")
-
-            def host():
-                if messagebox.askyesno("Podcast Deck", "Start your own group? This PC runs the show with OBS, and "
-                                       "stops being a guest.", parent=win):
-                    configfile.update(ADMIN=True)
-                    self.restart()
-            self.small_key(win, "Start my own group", host).pack(anchor="w", pady=(6, 0))
+            self.offer_invite(text)
+        self.small_key(win, "Join", join).pack(anchor="w", pady=(6, 0))
+        code_box.bind("<Return>", join)
         self.key(win, "Close", win.destroy).pack(anchor="e", pady=(16, 0))
+        if link_box is None:
+            name_box.focus_set()
 
-    def offer_invite(self, invite):
-        """An invite link was clicked. Ask first (links can come from anywhere), then join with it."""
+    def copy_group_link(self):
+        text = link.group_link(cfg.GROUP, group_people())
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.say("Group link copied. Send it to everyone on the show.", 8)
+        return text
+
+    def new_group_link(self, win):
+        """A link got out: a new group code for the same people. The old link stops showing anyone's camera."""
+        if not messagebox.askyesno("Podcast Deck", "Make a new group link? The old one stops working, so everyone "
+                                   "needs the new one (it's copied for you).", parent=win):
+            return
+        cfg.GROUP = link.new_group()
+        configfile.update(GROUP=cfg.GROUP)
+        win.destroy()
+        self.copy_group_link()
+        self.after_group_change("New group link copied. Send it to everyone.")
+
+    def start_group(self):
+        """A new group with everyone on your show who isn't here with you (and you)."""
+        me = getattr(cfg, "ME", "") or (cfg.CAMS[0] if cfg.CAMS else "Host 1")
+        cfg.GROUP, cfg.ME = link.new_group(), me
+        cfg.GROUP_PEOPLE = link.clean_names([me] + list(cfg.CAMS))
+        configfile.update(GROUP=cfg.GROUP, ME=me, GROUP_PEOPLE=cfg.GROUP_PEOPLE)
+        self.after_group_change("Group started.")
+
+    def add_person(self, name, joining=True):
+        """Add someone to your show. Someone joining from elsewhere goes into the group too (their camera comes
+        through it); someone here with you gets a webcam on this PC."""
+        if RECORD:
+            cfg.CAMS = list(cfg.CAMS) + [name]
+            configfile.update(CAMS=cfg.CAMS)
+        if joining:
+            if not getattr(cfg, "GROUP", ""):
+                self.start_group()
+            cfg.GROUP_PEOPLE = link.clean_names(list(cfg.GROUP_PEOPLE) + [name])
+            configfile.update(GROUP_PEOPLE=cfg.GROUP_PEOPLE)
+            self.copy_group_link()
+        self.after_group_change(f"{name} added." + (" The group link is copied: send it to everyone again so "
+                                                    "their decks know." if joining else ""))
+
+    def offer_invite(self, text):
+        """A group link was clicked or pasted. Ask first (links can come from anywhere), then join it."""
+        found = link.find_group(text)
+        if not found:
+            return
+        group, names = found
         self.root.deiconify()
         self.root.lift()
-        try:
-            host = link.parse_invite(invite)[0]
-        except DeckError:
-            host = None
-        where = f" (the admin's PC at {host})" if host else ""
-        if ADMIN:
-            if not messagebox.askyesno("Podcast Deck", f"Join this group{where}?\n\nThis PC stops running the show and "
-                                       "becomes a guest on theirs. Your layouts in OBS aren't touched, and you can "
-                                       "start your own group again from Invite / Join.", parent=self.root):
-                return
-            configfile.update(ADMIN=False, INVITE=invite)
+        if group == getattr(cfg, "GROUP", "") and set(names) <= set(group_people()):
+            self.say("You're already in that group.")
+            return
+        who = ", ".join(names) if names else "this group"
+        if not messagebox.askyesno("Podcast Deck", f"Join the group with {who}?\n\nTheir cameras go into your show, "
+                                   "and yours to theirs. Nobody can control your OBS.", parent=self.root):
+            return
+        me = getattr(cfg, "ME", "")
+        if not me:
+            self.ask_text("Join a group", "Your name, as the others know you:", "", lambda typed: self.join_group(
+                group, names, typed))
+            return
+        self.join_group(group, names, me)
+
+    def join_group(self, group, names, me):
+        me = link.clean_names([me])[0] if link.clean_names([me]) else "Me"
+        known = {n.casefold(): n for n in names}
+        me = known.get(me.casefold(), me)      # use the spelling the group already has
+        people = link.clean_names(names + [me])
+        here = [n for n in cfg.CAMS if n not in group_people() and n != me] if RECORD else []
+        cfg.GROUP, cfg.GROUP_PEOPLE, cfg.ME = group, people, me
+        values = dict(GROUP=group, GROUP_PEOPLE=people, ME=me)
+        if RECORD:
+            cfg.CAMS = values["CAMS"] = link.clean_names(people + here)
+        configfile.update(**values)
+        added = me not in names
+        if added:                              # tell the others: the link now has you in it
+            self.copy_group_link()
+        self.after_group_change("Joined the group." + (" You weren't in its link yet: the new link is copied, "
+                                                       "send it to everyone." if added else ""))
+
+    def after_group_change(self, message):
+        """The group changed: redraw, rebuild the layouts (recording deck), and offer to send the camera."""
+        self.people_shown = None
+        self.redraw()                          # Start my camera shows once you're in a group with others
+        self.layouts_changed(message)
+
+    def switch_mode(self):
+        """Switch this PC between recording (its own show, with OBS) and camera only."""
+        to_record = not RECORD
+        question = ("Record your own show on this PC? You'll need OBS installed." if to_record else
+                    "Switch this PC to camera only? It stops running a show; your layouts in OBS aren't touched, "
+                    "and you can switch back any time.")
+        if messagebox.askyesno("Podcast Deck", question, parent=self.root):
+            values = {"RECORD": to_record}
+            if to_record and getattr(cfg, "ME", "") and cfg.ME not in cfg.CAMS:
+                values["CAMS"] = link.clean_names([cfg.ME] + group_people())
+            configfile.update(**values)
             self.restart()
-            return
-        if invite == getattr(cfg, "INVITE", ""):
-            self.say("You're already using that invite.")
-            return
-        if messagebox.askyesno("Podcast Deck", f"Join this group{where}?", parent=self.root):
-            self.use_invite(invite)
 
     def check_update(self):
         """Installed app: if there's a newer version, install it and reopen. Never mid-recording."""
@@ -2009,94 +1898,147 @@ class Deck:
         threading.Thread(target=work, daemon=True).start()
 
     def restart(self):
-        """Open the deck again (after switching between running the show and joining one)."""
+        """Open the deck again (after switching between recording and camera only)."""
         args = [sys.executable] + [a for a in (sys.argv[1:] if getattr(sys, "frozen", False) else sys.argv)
-                                   if not find_invite(a)]   # don't offer a clicked invite again
+                                   if not find_invite(a)]   # don't offer a clicked link again
         subprocess.Popen(args, cwd=media.APP_DIR, env=dict(os.environ, PODCAST_DECK_WAIT="2"))
         self.closing()
 
-    def invite_sent_box(self, win, name):
-        """After Invite: their invite link, already copied. It takes them through Tailscale and the download;
-        adding your Tailscale share link for them puts that step in the same place."""
-        for w in win.winfo_children():
-            w.destroy()
-        win.unbind("<Return>")
-        text = self.copy_person_invite(name, fresh=False) if self.link and self.link.httpd else None
-        tk.Label(win, text=f"{name} is in the group", bg=BG, fg=INK, font=FONT, anchor="w").pack(fill="x")
 
-        def say(t, color=INK_DIM):
-            tk.Label(win, text=t, bg=BG, fg=color, font=STATUS_FONT, anchor="w", justify="left",
-                     wraplength=380).pack(fill="x", pady=(6, 0))
+class CameraDeck(Deck):
+    """The window on a PC that doesn't record: who's in the group, Start my camera, and Invite / Join. It
+    never touches OBS."""
 
-        def field(value, editable=False):
-            e = tk.Entry(win, width=44, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT,
-                         readonlybackground=KEY)
-            e.insert(0, value)
-            if not editable:
-                e.config(state="readonly")
-            e.pack(fill="x", pady=(4, 0), ipady=5)
-            return e
-        if not text:
-            say("Tailscale isn't running on this PC, so there's no invite link yet. Install or start Tailscale, wait "
-                "ten seconds, then click their name at the top → Copy invite link.", REC)
-            row = tk.Frame(win, bg=BG)
-            row.pack(fill="x", pady=(10, 0))
-            self.small_key(row, "Get Tailscale", lambda: webbrowser.open("https://tailscale.com/download")).pack(
-                side="left")
-            self.small_key(row, "Done", win.destroy).pack(side="right")
-            return
-        say("Their invite link is copied. Send it to them privately (it's only for them). It walks them through "
-            "everything: Tailscale, downloading the deck, and joining.")
-        link_box = field(text)
-        say("Your Tailscale share link for them (optional): on Tailscale's page, ⋯ next to this PC → Share → Copy "
-            "share link. Paste it here and it's added to their invite link.")
-        share_box = field(self.shares.get(name, ""), editable=True)
+    def __init__(self, root):
+        self.root = root
+        self.backend, self.recording, self.last_state = None, False, None
+        self.names, self.live, self.camera_on = {}, {}, False
+        self.notice, self.notice_until = "", 0.0
+        self.people_shown, self.people_items = None, []
+        root.title("Podcast Deck · camera only")
+        root.attributes("-topmost", True)
+        root.geometry("320x420")
+        root.minsize(260, 320)
+        self.build_ui()
+        listen_for_invites(lambda text: root.after(0, self.offer_invite, text))
+        root.after(3000, self.check_update)
 
-        def add_share(_e=None):
-            share = share_box.get().strip()
-            if share and not link.TAILSCALE_SHARE.fullmatch(share):
-                self.say("That isn't a Tailscale share link. It starts with https://login.tailscale.com/", 8)
-                return
-            self.shares[name] = share
-            new = self.copy_person_invite(name, fresh=False)
-            link_box.config(state="normal")
-            link_box.delete(0, "end")
-            link_box.insert(0, new)
-            link_box.config(state="readonly")
-        share_box.bind("<Return>", add_share)
-        share_box.bind("<FocusOut>", add_share)
-        row = tk.Frame(win, bg=BG)
-        row.pack(fill="x", pady=(10, 0))
-        self.small_key(row, "Copy link", add_share).pack(side="left")
-        self.small_key(row, "Open Tailscale's page", lambda: webbrowser.open(
-            "https://login.tailscale.com/admin/machines")).pack(side="left", padx=6)
-        self.small_key(row, "Done", win.destroy).pack(side="right")
-
-    def remove_person(self, name):
-        """Admin: take someone out of the group. Their invite stops working and their camera leaves the layouts."""
-        if len(cfg.CAMS) <= 1:
-            self.tell("The group needs at least one camera.")
-            return
-        if not messagebox.askyesno("Podcast Deck", f"Remove {name} from the group?\n\nTheir invite stops working "
-                                   "and their camera is taken out of every layout.", parent=self.root):
-            return
-        link.remove_invite(name)
-        cfg.CAMS = [n for n in cfg.CAMS if n != name]
-        configfile.update(CAMS=cfg.CAMS)
+    def build_ui(self):
+        root = self.root
+        root.configure(bg=BG)
+        header = tk.Frame(root, bg=PANEL)
+        header.pack(fill="x")
+        tk.Frame(root, bg=LINE, height=1).pack(fill="x")
+        tk.Label(header, text="P", bg=LIT, fg=LIT_INK, font=LABEL_FONT, width=2).pack(side="left", padx=(12, 8), pady=10)
+        tk.Label(header, text="PODCAST DECK", bg=PANEL, fg=INK, font=BRAND_FONT).pack(side="left")
+        self.people_row = tk.Frame(root, bg=BG, height=20)
+        self.people_row.pack(fill="x", padx=12, pady=(8, 0))
+        self.people_row.bind("<Configure>", lambda _e: self.flow_people())
         self.people_shown = None
-        self.call(lambda b: b.rebuild_soon(), then=lambda msg: self.say(f"{name} removed. {msg}", 8))
+
+        bar = tk.Frame(root, bg=PANEL)
+        bar.pack(side="bottom", fill="x")
+        tk.Frame(root, bg=LINE, height=1).pack(side="bottom", fill="x")
+        in_group = bool(getattr(cfg, "GROUP", ""))
+        self.status = tk.Label(bar, text="Camera only: this PC doesn't record." if in_group else
+                               "Not in a group yet.", bg=PANEL, fg=INK_DIM, font=STATUS_FONT, anchor="w",
+                               justify="left", wraplength=290)
+        self.status.pack(fill="x", padx=12, pady=6)
+
+        body = tk.Frame(root, bg=BG, padx=12)
+        body.pack(fill="both", expand=True)
+        self.section(body, "YOUR CAMERA").pack(fill="x", pady=(14, 4))
+        if in_group:
+            tk.Label(body, text="Everyone recording shows your camera in their own show. Keep the camera tab open "
+                                "while you're on.", bg=BG, fg=INK_DIM, font=STATUS_FONT, anchor="w", justify="left",
+                     wraplength=290).pack(fill="x")
+            start = self.key(body, "▶  Start my camera", self.start_camera)
+            start.config(bg=LIT, fg=LIT_INK, activebackground=LIT, activeforeground=LIT_INK, anchor="center")
+            start.pack(fill="x", pady=(10, 0), ipady=8)
+        else:
+            tk.Label(body, text="Got a group link? Click Invite / Join and paste it, or open the link and click "
+                                "Join.", bg=BG, fg=INK_DIM, font=STATUS_FONT, anchor="w", justify="left",
+                     wraplength=290).pack(fill="x")
+        row = tk.Frame(body, bg=BG)
+        row.pack(fill="x", side="bottom", pady=(0, 10))
+        self.small_key(row, "Settings…", self.settings_box).pack(side="right")
+        self.draw_people()
+
+    def show_people(self):
+        """Everyone in the group. This PC can't see the others' cameras, so only yours goes green (once
+        you've started it)."""
+        return [(n, OK if self.camera_on and n == getattr(cfg, "ME", "") else MUTED) for n in group_people()]
+
+    def start_camera(self):
+        Deck.start_camera(self)
+        self.camera_on = True
+        self.people_shown = None
+        self.draw_people()
+
+    def layouts_changed(self, message):
+        self.draw_people()                     # no OBS here: nothing to rebuild
+        self.say(message, 8)
+
+    def redraw(self):
+        for w in self.root.winfo_children():
+            w.destroy()
+        self.build_ui()
+
+    def settings_box(self, tab=None):
+        """Your name, and switching this PC to recording."""
+        win = tk.Toplevel(self.root, bg=BG, padx=16, pady=14)
+        win.title("Settings")
+        win.attributes("-topmost", True)
+        win.transient(self.root)
+        win.resizable(False, False)
+        win.bind("<Escape>", lambda _e: win.destroy())
+        tk.Label(win, text="Your name", bg=BG, fg=INK, font=FONT, anchor="w").pack(fill="x")
+        tk.Label(win, text="As the others know you. It's on your camera in everyone's show.", bg=BG, fg=INK_DIM,
+                 font=STATUS_FONT, anchor="w").pack(fill="x")
+        row = tk.Frame(win, bg=BG)
+        row.pack(fill="x", pady=(6, 0))
+        name_box = tk.Entry(row, width=28, bg=KEY, fg=INK, insertbackground=INK, relief="flat", font=STATUS_FONT)
+        name_box.insert(0, getattr(cfg, "ME", ""))
+        name_box.pack(side="left", ipady=5)
+
+        def save(_e=None):
+            new = link.clean_names([name_box.get()])
+            if not new or new[0] == getattr(cfg, "ME", ""):
+                return
+            old, cfg.ME = getattr(cfg, "ME", ""), new[0]
+            cfg.GROUP_PEOPLE = link.clean_names([cfg.ME if n == old else n for n in group_people()] + [cfg.ME])
+            configfile.update(ME=cfg.ME, GROUP_PEOPLE=cfg.GROUP_PEOPLE)
+            if getattr(cfg, "GROUP", ""):
+                self.copy_group_link()
+            self.after_group_change("Name saved. The group link is copied: send it to everyone so their decks "
+                                    "show your new name.")
+        name_box.bind("<Return>", save)
+        self.small_key(row, "Save", save).pack(side="left", padx=6)
+        tk.Label(win, text="This PC", bg=BG, fg=INK, font=FONT, anchor="w").pack(fill="x", pady=(16, 0))
+        tk.Label(win, text="Have OBS? Record your own show here, with everyone's cameras.", bg=BG, fg=INK_DIM,
+                 font=STATUS_FONT, anchor="w").pack(fill="x")
+        self.small_key(win, "Record my own show…", self.switch_mode).pack(anchor="w", pady=(6, 0))
+        self.key(win, "Close", win.destroy).pack(anchor="e", pady=(16, 0))
+
+
+def open_deck(root):
+    """The recording deck, or the camera-only window, as config.py says."""
+    deck = Deck(root) if RECORD else CameraDeck(root)
+    root.protocol("WM_DELETE_WINDOW", deck.closing)
+    return deck
 
 
 def welcome(root, invite=None):
-    """First launch: one question, then config.py is written and the deck opens. Opened from an invite link,
-    it goes straight to joining, with the invite filled in."""
+    """First launch: your name, and whether this PC records its own show or just sends a camera. Then
+    config.py is written and the deck opens. Opened from a group link, you join that group."""
     root.title("Podcast Deck")
     root.configure(bg=BG)
     root.attributes("-topmost", True)
-    root.geometry("420x380")
+    root.geometry("420x420")
     frame = tk.Frame(root, bg=BG, padx=20, pady=18)
     frame.pack(fill="both", expand=True)
     key = lambda parent, text, cmd: Deck.key(None, parent, text, cmd)   # the deck's button style, no deck yet
+    found = link.find_group(invite) if invite else None
 
     def clear():
         for w in frame.winfo_children():
@@ -2113,7 +2055,14 @@ def welcome(root, invite=None):
         e.focus_set()
         return e
 
-    def done(**values):
+    def done(me, record, group="", names=()):
+        names = list(names)
+        known = {n.casefold(): n for n in names}
+        me = known.get(me.casefold(), me)
+        people = link.clean_names(names + [me]) if group else []
+        values = dict(RECORD=record, ME=me, GROUP=group, GROUP_PEOPLE=people)
+        if record:
+            values["CAMS"] = people or [me]
         if configfile.load() is None:
             configfile.create(**values)
         else:
@@ -2121,76 +2070,62 @@ def welcome(root, invite=None):
         use_config(configfile.load())
         root.unbind("<Return>")
         frame.destroy()
-        deck = Deck(root)
-        root.protocol("WM_DELETE_WINDOW", deck.closing)
+        deck = open_deck(root)
+        if group and me not in names:          # the others' link doesn't have you yet
+            deck.copy_group_link()
+            deck.say("You're in. The group link now includes you and is copied: send it to everyone.", 12)
 
-    def recording():
+    def first():
         clear()
-        label("Who's on the show?", FONT, INK)
-        label("One name per camera, left to right, separated by commas. People sharing a camera share a name.")
-        names = entry("Host 1, Host 2, Host 3")
+        label("Podcast Deck", FONT, INK)
+        if found:
+            label("You're joining the group with " + (", ".join(found[1]) or "your friends") + ".")
+        label("Your name, as the others know you (it's on your camera):")
+        name = entry(os.environ.get("USERNAME", ""))
         problem = tk.Label(frame, text="", bg=BG, fg=REC, font=STATUS_FONT, anchor="w")
         problem.pack(fill="x")
+        label("Does this PC record its own show?")
+
+        def go(record):
+            me = link.clean_names([name.get()])
+            if not me:
+                problem.config(text="Type your name first.")
+                return
+            if found:
+                done(me[0], record, *found)
+            elif record:
+                others(me[0])
+            else:
+                done(me[0], False)
+        big = dict(fill="x", ipady=10, pady=4)
+        key(frame, "Record my own show (this PC has OBS)", lambda: go(True)).pack(**big)
+        key(frame, "Camera only (just send my camera)", lambda: go(False)).pack(**big)
+
+    def others(me):
+        clear()
+        label("Who else is on the show?", FONT, INK)
+        label("Names, separated by commas. Leave it empty if it's just you; you can add people any time with "
+              "Invite / Join.")
+        names = entry("")
 
         def go(_e=None):
-            cams = [n.strip() for n in names.get().split(",") if n.strip()]
-            if not cams:
-                problem.config(text="Add at least one name.")
-                return
-            done(ADMIN=True, CAMS=cams)
+            done(me, True, link.new_group(), [me] + [n for n in names.get().split(",")])
         key(frame, "Start", go).pack(anchor="e", pady=(8, 0))
         root.bind("<Return>", go)
 
-    given = invite
-
-    def joining():
-        clear()
-        label("Paste your invite", FONT, INK)
-        label("The admin sends you an invite that starts with podcast-deck://. Copy all of it and paste it here.")
-        try:
-            clip = root.clipboard_get().strip()
-        except tk.TclError:
-            clip = ""
-        invite = entry(given or find_invite(clip) or "")
-        label("Your name, shown on your camera (you can change it later in Settings):")
-        shown = entry(os.environ.get("USERNAME", ""))
-        invite.focus_set()
-        problem = tk.Label(frame, text="", bg=BG, fg=REC, font=STATUS_FONT, anchor="w", wraplength=370,
-                           justify="left")
-        problem.pack(fill="x")
-
-        def go(_e=None):
-            text = invite.get().strip()
-            if not text.startswith(link.PREFIX):
-                problem.config(text="That doesn't look like an invite. It starts with podcast-deck://")
-                return
-            done(ADMIN=False, INVITE=text, DISPLAY_NAME=positions.clean_display_name(shown.get()))
-        key(frame, "Join", go).pack(anchor="e", pady=(8, 0))
-        root.bind("<Return>", go)
-
-    if cfg is not None and not ADMIN:           # a guest whose invite is missing
-        joining()
-        return
-    label("Podcast Deck", FONT, INK)
-    label("Is this the PC that runs OBS and records, or are you joining someone else's recording?")
-    big = dict(fill="x", ipady=10, pady=4)
-    key(frame, "I'm recording (this PC runs OBS)", recording).pack(**big)
-    key(frame, "I'm joining from somewhere else", joining).pack(**big)
-    if given:
-        joining()
+    first()
 
 
 if __name__ == "__main__":
     time.sleep(float(os.environ.pop("PODCAST_DECK_WAIT", 0) or 0))   # a restart: let the old window close first
-    opened_with = next((find_invite(a) for a in sys.argv[1:] if find_invite(a)), None)   # an invite link was clicked
+    opened_with = next((find_invite(a) for a in sys.argv[1:] if find_invite(a)), None)   # a group link was clicked
     if opened_with and hand_to_running_deck(opened_with):
         sys.exit()                             # the deck that's already open takes it
     root = tk.Tk()
-    if cfg is None or (not ADMIN and not getattr(cfg, "INVITE", "")):
+    if cfg is None:
         welcome(root, opened_with)
     else:
-        deck = Deck(root)
-        root.protocol("WM_DELETE_WINDOW", deck.closing)
+        deck = open_deck(root)
         if opened_with:
             root.after(800, deck.offer_invite, opened_with)
     root.mainloop()

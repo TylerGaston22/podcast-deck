@@ -1,22 +1,17 @@
-"""Everything the deck can do, behind one interface.
+"""Everything the deck can do with OBS.
 
-Local controls the OBS on this PC (the admin's deck uses it, and so does its door for guests).
-Remote asks the admin's deck to do things instead (guests' decks use it). A guest's deck never
-talks to anyone's OBS, so no OBS password ever leaves the admin's PC.
+Local controls the OBS on this PC, and only this PC. Nobody's deck ever reaches anyone else's OBS:
+people in the group see each other through their cameras (VDO.Ninja), and each records their own show.
 """
+import base64
 import functools
-import json
-import math
 import os
 import threading
-import urllib.error
-import urllib.request
 
 import obsws_python as obs
 from obsws_python.error import OBSSDKRequestError
 
 import bgcontrol
-import link
 import media
 import obsconfig
 import positions
@@ -67,7 +62,7 @@ class Local:
         self.canvas = (cfg.CANVAS_W, cfg.CANVAS_H)
         self.ids = {}                          # (layout, source name) → OBS scene item id
         self.checked_layouts = False           # first connection: build the layouts if OBS has none yet
-        self.rebuild_waiting = False           # a guest's camera arrived mid-recording; rebuild after
+        self.rebuild_waiting = False           # someone joined or left mid-recording; rebuild after
         self.note = None                       # something the window should mention once
         self.last_scene = None                 # switching to a layout puts up its default background
         self.shapes = {}                       # cam source → its camera's (width, height), to fit boxes to it
@@ -181,9 +176,9 @@ class Local:
                 items.append({"name": name, "box": list(positions.item_box(i["sceneItemTransform"]))})
         note, self.note = self.note, None
         return {"scenes": [s for s in scenes if s not in HIDDEN], "current": current,
-                "recording": recording, "rec_ms": getattr(record, "output_duration", 0), "full": self._full(cl), "items": items, "canvas": list(self.canvas),
+                "recording": recording, "rec_ms": getattr(record, "output_duration", 0), "items": items, "canvas": list(self.canvas),
                 "note": note, "now": self._now(cl), "meta": self._meta(cl), "names": positions.read(cl, positions.DISPLAY_NAMES, {}),
-                "people": link.people(self.cfg.CAMS, getattr(self.cfg, "ME", ""))}
+                "live": self._cams_live(cl)}
 
     def _now(self, cl):
         """What's showing: the background (video title or picture name) and the Video + Cams video."""
@@ -223,17 +218,6 @@ class Local:
     def live(self, channel):
         """What OBS's player page for a channel ("bg" or "video") should show right now."""
         return self.bg_video if channel == "bg" else self.video
-
-    def _full(self, cl):
-        return bool(positions.read(cl, positions.GUESTS_FULL_CONTROL, False))
-
-    @_locked
-    def full(self):
-        return self._full(self.client())
-
-    @_locked
-    def set_full(self, on):
-        positions.write(self.client(), positions.GUESTS_FULL_CONTROL, bool(on))
 
     @_locked
     def switch(self, scene):
@@ -737,23 +721,26 @@ class Local:
     def set_window(self, window):
         self.client().set_input_settings("Browser Window", {"window": window}, True)
 
-    @_locked
-    def set_remote_cam(self, name, cam_id):
-        """A guest pressed Start my camera: show their VDO.Ninja camera in their Cam source."""
-        cl = self.client()
-        changed = link.save_remote_cam(name, cam_id)
-        cam = f"Cam - {name}"
-        found = cl.get_input_settings(cam)
-        if found.input_kind == "browser_source":
-            if changed or found.input_settings.get("url") != link.vdo_view(cam_id):
-                cl.set_input_settings(cam, {"url": link.vdo_view(cam_id)}, True)
-            return "Your camera is in the show."
-        # Their cam was a webcam source: it has to be swapped, which rebuilds the layouts. Never mid-recording.
-        if cl.get_record_status().output_active:
-            self.rebuild_waiting = True
-            return "Your camera will be added as soon as the recording stops."
-        self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
-        return "Your camera is in the show."
+    def _cams_live(self, cl):
+        """Whose camera is showing, by name, for the row at the top. A webcam counts once one is picked; a
+        group camera once its picture isn't blank. Checked every few seconds (a tiny snapshot each)."""
+        self.live_checks = getattr(self, "live_checks", 0) + 1
+        if self.live_checks % 3 != 1 and hasattr(self, "live_found"):
+            return self.live_found
+        found = {}
+        for name in self.cfg.CAMS:
+            cam = f"Cam - {name}"
+            try:
+                settings = cl.get_input_settings(cam)
+                if settings.input_kind.startswith("dshow_input"):
+                    found[name] = bool(settings.input_settings.get("video_device_id"))
+                else:
+                    shot = cl.get_source_screenshot(cam, "bmp", 8, 8, -1).image_data
+                    found[name] = not blank_bmp(base64.b64decode(shot.split(",", 1)[-1]))
+            except (OBSSDKRequestError, ValueError, IndexError):
+                found[name] = False
+        self.live_found = found
+        return found
 
     @_locked
     def backgrounds(self):
@@ -811,89 +798,17 @@ class Local:
         self.client().set_input_settings("Video Panel", {"shutdown": bool(on)}, True)
 
 
-
-class Remote:
-    """A guest's deck: asks the admin's deck to do things, over Tailscale only."""
-
-    def __init__(self, invite):
-        self.host, self.port, self.code = link.parse_invite(invite)   # refuses anything outside Tailscale
-        self.base = f"http://{self.host}:{self.port}"
-
-    def _ask(self, path, body=None):
-        req = urllib.request.Request(self.base + path, method="POST" if body is not None else "GET",
-                                     data=json.dumps(body).encode() if body is not None else None,
-                                     headers={"Authorization": f"Bearer {self.code}",
-                                              "Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=5) as r:
-                return json.loads(r.read() or b"null")
-        except urllib.error.HTTPError as e:
-            try:
-                message = json.loads(e.read()).get("message")
-            except (ValueError, AttributeError):
-                message = None
-            if e.code == 503:
-                raise ConnectionError(message or "The admin's OBS isn't reachable right now.") from e
-            raise DeckError(message or f"The admin's deck said no ({e.code}).") from e
-        except (urllib.error.URLError, OSError) as e:
-            raise ConnectionError("Can't reach the admin's deck. Check that Tailscale is on for both of you "
-                                  "and that the admin's deck is open; this window keeps trying.") from e
-
-    def _do(self, action, **args):
-        return self._ask("/action", {"do": action, "args": args})
-
-    def state(self):
-        return self._ask("/state")
-
-    def switch(self, scene):
-        self._do("switch", scene=scene)
-
-    def toggle_record(self):
-        self._do("toggle_record")
-
-    def move(self, scene, cam, box):
-        self._do("move", scene=scene, cam=cam, box=list(box))
-
-    def reset(self, scene, cam):
-        return self._do("reset", scene=scene, cam=cam)
-
-    def backgrounds(self):
-        return self._do("backgrounds")
-
-    def set_background(self, path):
-        return self._do("set_background", path=path)
-
-    def next_background(self):
-        return self._do("next_background")
-
-    def video_settings(self):
-        return self._do("video_settings")
-
-    def set_restart(self, on):
-        self._do("set_restart", on=on)
-
-    def set_video(self, state):
-        self._do("video", state=state)
-
-    def set_bg_video(self, state):
-        self._do("bg_video", state=state)
-
-    def add_background_url(self, url):
-        return self._do("background_url", url=url)
-
-    def camera(self, cam_id):
-        return self._do("camera", id=cam_id)
-
-    def set_display_name(self, shown):
-        return self._do("display_name", name=shown)
-
-
-def valid_box(box, canvas):
-    """A box from a guest, checked: four finite numbers, on screen, not absurdly small."""
-    if not (isinstance(box, list) and len(box) == 4
-            and all(isinstance(v, (int, float)) and math.isfinite(v) for v in box)):
-        raise DeckError("That camera spot doesn't make sense.")
-    x, y, w, h = box
-    cw, ch = canvas
-    w, h = min(max(w, 16), cw), min(max(h, 9), ch)
-    return [min(max(0, x), cw - w), min(max(0, y), ch - h), w, h]
+def blank_bmp(data):
+    """True if a small BMP snapshot is all black or see-through, i.e. no camera picture yet."""
+    offset = int.from_bytes(data[10:14], "little")
+    bits = int.from_bytes(data[28:30], "little")
+    step = bits // 8
+    if step not in (3, 4):
+        raise ValueError("unexpected snapshot format")
+    pixels = data[offset:]
+    for i in range(0, len(pixels) - step + 1, step):
+        b, g, r = pixels[i], pixels[i + 1], pixels[i + 2]
+        alpha = pixels[i + 3] if step == 4 else 255
+        if alpha > 16 and r + g + b > 48:
+            return False
+    return True

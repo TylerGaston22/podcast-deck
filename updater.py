@@ -2,7 +2,7 @@
 
 Only the installed app (PodcastDeck.exe) updates this way. A source folder cloned with git updates
 through Podcast Deck.bat instead. The newest installer is downloaded and run silently; it closes the
-deck, installs over it (config.py, backgrounds, and guests stay), and opens the deck again.
+deck, installs over it (config.py and backgrounds stay), and opens the deck again.
 """
 import json
 import os

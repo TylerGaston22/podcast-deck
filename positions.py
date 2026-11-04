@@ -5,7 +5,6 @@ re-running build_scenes.py. Boxes are (x, y, width, height) in
 canvas pixels, the same shape build_scenes.py uses for layouts.
 """
 REALM = "OBS_WEBSOCKET_DATA_REALM_PROFILE"
-GUESTS_FULL_CONTROL = "podcast_deck.guests_full_control"   # True: guests get every admin control
 DEFAULTS = "podcast_deck.default_positions"     # {layout: {cam source: box}}, written by build_scenes.py
 NAME_TAGS = "podcast_deck.name_tags"            # show names on cams (default on)
 DISPLAY_NAMES = "podcast_deck.display_names"    # {cam name: the name its guest chose to show}

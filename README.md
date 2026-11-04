@@ -123,9 +123,8 @@ switching behind controls you can use without leaving the game.
       with no OBS menus. `ctrl+alt+b` steps through the saved pictures.
 - [x] Play link box on the deck: paste a YouTube link and it plays in the Video + Cams layout, with its
       sound recorded. Videos that can't be embedded get a clear message instead of a blank box.
-- [x] Hosts joining online: each runs the deck on their own PC, connected to the recording PC's deck over Tailscale,
-      and drags their own camera around on a screen map. The admin can give guests full control of
-      everything else too. Remote cameras come in through VDO.Ninja links.
+- [x] Hosts in different places: everyone's in one group, and each person records their own show or just
+      sends their camera. Cameras come in through VDO.Ninja; nobody controls anyone else's OBS.
 - [x] `Podcast Deck.bat` launches the deck with no console window, so it works as a desktop shortcut.
 - [x] The desktop shortcut updates the deck from GitHub each time it opens (when cloned with git), and
       installs any new add-ons.
@@ -175,7 +174,7 @@ while keeping their aspect ratio.
 
 ## Setup
 
-Click-by-click steps for everyone, including guests joining online, are in [SETUP.md](SETUP.md). In
+Click-by-click steps for everyone, including people in other places, are in [SETUP.md](SETUP.md). In
 short, on the PC that runs OBS:
 
 1. Install [OBS](https://obsproject.com), open it once, and close it.
@@ -222,11 +221,10 @@ while recording.
 layout's panel opens by itself when you switch to it, and only one is open at a time. Opening the panel
 of a layout that isn't live switches to it first, since everything in the panel changes what's showing.
 The panel shows the background and any video that's on, then **Background ▾**, **Paste link**, **Play
-link…** (only on layouts with a video box, like Video + Cams), and **Save layout** (admin).
+link…** (only on layouts with a video box, like Video + Cams), and **Save layout**.
 
-**Background ▾** lists every saved picture; click one to switch to it, even mid-recording. On the
-admin's deck, the picture you pick also becomes that layout's default, so switching away and back keeps
-it. **Add picture…** opens a file picker and copies the picture into the `backgrounds` folder, so it keeps
+**Background ▾** lists every saved picture; click one to switch to it, even mid-recording. The picture
+you pick also becomes that layout's default, so switching away and back keeps it. **Add picture…** opens a file picker and copies the picture into the `backgrounds` folder, so it keeps
 working if the original moves and stays in the menu from then on. **Plain color** turns the picture
 off, and **Open backgrounds folder** lets you add or delete pictures by hand. OBS remembers the
 current picture between sessions.
@@ -255,53 +253,41 @@ running, OBS's video boxes clear themselves within a few seconds.
 **The screen map** under the layout buttons shows where each camera sits in the current layout. Drag a
 camera to move it, or drag the small square in its corner to resize it. OBS follows along live, and the
 move only affects that layout and only lasts for this session: every session starts from the default
-spots. **Reset camera** puts the selected camera back on its default spot. On the admin deck you can drag
-anyone's camera; click one to select it. Guests can only drag their own.
+spots. **Reset camera** puts the selected camera back on its default spot. Click a camera to select it.
 
 **The window:** a header with the **OBS** status pill (green when connected, orange when not) and a red
-**REC** pill with the running time while recording; **who's in** (below); the **LAYOUTS** list, each
+**REC** pill with the running time while recording; **who's on** (below); the **LAYOUTS** list, each
 with its **+** panel; the **SCREEN** map; **Record**; and a status bar at the bottom for messages.
 
-**Who's in:** under the header, a small square and name for everyone in the group: green while they're
-connected, gray while they're not. People at the admin's PC are green whenever the admin's deck is open.
-Guests are green while their deck is open and reaching the admin's deck (it checks in every couple of
-seconds, so a guest goes gray about 10 seconds after their deck closes or loses Tailscale). Guests see the
-same row on their deck. Names show the name each person chose for their camera.
+**Who's on:** under the header, a small square and name for everyone on your show and in your group,
+green while their camera is showing in your OBS. Click a name to take them off your show (their own deck
+isn't affected).
 
-**Invite / Join** (on the right of that row) opens one box for the group:
-- **Admin: Invite someone.** Type their name and click **Invite**. Their camera goes into every layout
-  (after the recording, if one is running). If they're joining from somewhere else, their code is made and
-  copied, ready to send privately, with a reminder to share your PC with them in Tailscale. Untick the box
-  for someone in the room with you.
-- **Admin: Got a code from someone else?** Paste it and click **Join their group**: this PC becomes a guest
-  on their group instead (the deck reopens). Your layouts in OBS aren't touched.
-- **Guest: Join a group.** Paste the code from the admin and click **Join**. **Start my own group** switches
-  this PC to running the show with OBS instead.
-
-**Click a name** (admin) to copy their code, give them a new one (the old one stops working), or **Remove
-from the group**, which also takes their camera out of the layouts.
+**Invite / Join** (on the right of that row): the **group link** to send everyone (**Copy link**, or
+**New link…** if one got out), **Add someone** (tick "They're here with me" for someone sharing this PC's
+webcam), and **Join a group** by pasting someone's group link. See [Hosts in different places](#hosts-in-different-places).
 
 **Layouts** are color-coded by kind: blue for game, green for talking, magenta for video, yellow for
 breaks, gray for your own scenes. The live one has an accent bar. Tabs above the list (**General**, plus
 tabs you add with **＋ Tab**) keep them sorted; right-click a tab to rename or delete it. Drag a row up or
-down to reorder (admin); the hotkeys and the mouse's next-layout button follow that order, whatever tab is
+down to reorder; the hotkeys and the mouse's next-layout button follow that order, whatever tab is
 showing.
 
 **Cameras fit themselves:** each camera's box takes the camera's own shape inside its spot (a 4:3 webcam
 gets a 4:3 box), so OBS shows no gaps beside it. If a camera changes shape, its boxes are refitted.
 
-**Save layout** (in the layout's panel, admin only) saves the live layout exactly as it is now as its
+**Save layout** (in the layout's panel) saves the live layout exactly as it is now as its
 default: every source's position and size (moved on the map or in OBS), the cameras' spots, and the
 background picture showing. New sessions and Repair layouts start from it.
 
-**Each layout's menu** (hover and click **⋯**, or right-click the row; admin only): **Save layout as it is
+**Each layout's menu** (hover and click **⋯**, or right-click the row): **Save layout as it is
 now**, **Rename…** (renames
 OBS's scene too), **Start on this layout** (the deck switches to it when it opens), **Default
 background**, **Tab**, **Color** (or Automatic, by kind), **Reset cameras here**, and **Delete layout…**.
 Repair layouts won't bring back a layout you deleted on purpose; **Bring back deleted layouts** (Settings
 → Cameras) will.
 
-**Settings…** (admin) has these tabs:
+**Settings…** has these tabs:
 - **Cameras**: webcams, the browser window, **Show names on cams** (a name tag in each cam's corner that
   moves with it), **Save camera spots as default** / **Reset cameras to default**, **Repair layouts**, and
   **Bring back deleted layouts**.
@@ -309,40 +295,35 @@ Repair layouts won't bring back a layout you deleted on purpose; **Bring back de
   extras. Switching to a layout puts up its default; picking another lasts until you switch layouts or the
   session ends. **Add picture…** saves a picture of your own and adds it to that layout. On a layout with
   extras, Background ▾ lists them first (★ marks the default) and `ctrl+alt+b` steps through just those.
-- **Guests**: invites, and the **Guests get full control** switch.
+- **Group**: switch this PC to camera only, and Invite / Join.
+- **Hotkeys**: change any hotkey.
 - **Help**: How it works.
 - **Look**: four color schemes (Stream Launcher, Electric blue, Violet, Teal + orange). It changes right
   away and is remembered on this PC; the browser control pages follow it.
 
-**Guests get full control** (Settings → Guests, admin only) gives guests' decks everything the admin deck has:
-layouts, Record, Background ▾, Play link…, moving anyone's camera, and the hotkeys for all of them.
-It's off by default, and turning it off takes it all away again within a couple of seconds. Only the
-admin can flip it.
+## Hosts in different places
 
-## Hosts joining online
+Everyone on the show is in one **group**, and each person picks what their PC does:
 
-One PC runs OBS and records: the admin. Everyone else runs the deck on their own PC as a guest. Only
-the admin's deck ever touches OBS. Guests' decks send it requests over Tailscale, and it checks each
-one before doing anything. Guests never get OBS or its password. Exact steps are in
-[SETUP.md](SETUP.md), Part C.
+- **Record my own show:** the PC has OBS. Your deck controls your own OBS and puts everyone's camera in
+  your layouts; you record or stream your own version, arranged however you like.
+- **Camera only:** no OBS needed. A small window with **Start my camera**.
 
-- **Tailscale** links the PCs privately, with nothing opened on anyone's router. The admin shares their
-  PC with each guest in Tailscale. The deck only works over Tailscale: the admin's deck listens on its
-  Tailscale address and nowhere else, and guests' decks refuse to connect to anything that isn't a
-  Tailscale address.
-- **Invites** say who each guest is. The admin copies one per person from **Settings…** and sends it
-  privately. **New** replaces an invite and **Remove** cuts that person off. On first launch, a guest
-  clicks **I'm joining** and the invite on their clipboard is pasted in for them.
-- **Cameras** come in through VDO.Ninja. A guest clicks **Start my camera**: their browser opens a
-  private VDO.Ninja link that sends their camera and mic, and the admin's deck adds it to their `Cam - …`
-  source by itself. If the admin is recording at that moment, it's added as soon as the recording stops,
-  so nothing changes mid-episode.
-- **Display names:** a guest types the name to show on their camera when they join, and can change it
-  any time in **Settings…** → **You**. It shows on their name tag, everyone's screen map, and their title
-  bar. Their invite still decides which camera is theirs, so a name can't take over someone else's camera.
-- **People in the same room sharing one camera** share one name and can use the same invite.
-- **Optional, for extra safety:** in Tailscale's access rules, let shared guests reach only the deck's
-  port (`4460`) on the admin PC.
+Nobody controls anyone else's OBS: decks never connect to each other. Exact steps are in
+[SETUP.md](SETUP.md). How it works, and why it's safe, is in [NOTES.md](NOTES.md).
+
+- **One link for everyone.** Invite / Join → **Copy link**. It opens a page that walks people through
+  the download, then **Join the show** opens their deck with the group. They type their name and pick
+  Record or Camera only.
+- **Cameras** travel through VDO.Ninja. **Start my camera** opens a browser tab that sends your camera and
+  mic; everyone recording shows it in their own OBS. Each camera's ID comes from the group code and the
+  person's name, so names have to match what the others typed.
+- **New people:** Invite / Join → **Add**, then send the updated link to everyone (it's copied for you).
+  Someone who joins under a name the link doesn't have gets the updated link to send around.
+- **When you record in a group,** your own camera comes through VDO.Ninja too, so click Start my camera.
+  (A webcam usually can't be used by OBS and the browser at once.) On your own, it's a webcam on your PC.
+- **People in the same room sharing one camera** share one name.
+- **Switch roles** any time: Settings → Group (recording deck), or Settings (camera-only window).
 
 ## Configuration reference
 
@@ -364,14 +345,12 @@ Everything lives in `C:\Users\<you>\source\repos\podcast-deck\config.py`, copied
 | `LAYOUT_HOTKEYS` | `{}` | Your own hotkey per layout, by name (`""` for none). Set in Settings → Hotkeys |
 | `VIDEO_X`, `VIDEO_Y` | `432, 135` | Top-left corner of the video box in Video + Cams |
 | `VIDEO_W`, `VIDEO_H` | `1440, 810` | Size of the video box. Leave room beside it for the cams |
-| `REMOTE_CAMS` | `{}` | Only for adding a VDO.Ninja camera by hand. Guests' cameras are added by themselves |
-| `ADMIN` | `True` | `True` on the PC that runs OBS and records. `False` on guests' PCs |
-| `ME` | `""` | Admin only, optional: your cam name, so the screen map selects it first |
-| `INVITE` | `""` | Guests only: the invite the admin sent you. Filled in on first launch |
-| `CAMERA_ID` | `""` | Guests only: your private VDO.Ninja ID, made by **Start my camera** |
-| `DISPLAY_NAME` | `""` | Guests only: the name shown on your camera. Set when joining, changed in Settings |
+| `RECORD` | `True` | `True`: this PC records its own show with OBS. `False`: camera only |
+| `ME` | `""` | Your name in the group (and your cam's name) |
+| `GROUP` | `""` | The group's code, from its link. Anyone with it can see the group's cameras |
+| `GROUP_PEOPLE` | `[]` | Everyone in the group, by name. Their cams come through VDO.Ninja |
+| `REMOTE_CAMS` | `{}` | Only for adding a VDO.Ninja camera by hand |
 | `THEME` | `"Stream Launcher"` | The deck's color scheme, picked in Settings → Look |
-| `DECK_PORT` | `4460` | Admin only: the port guests' decks connect to, over Tailscale only |
 | `MOUSE_BUTTONS` | back → next, forward → record | Keys: `"x"` (back), `"x2"` (forward), `"middle"`. Values: a scene name, `"next"`, `"record"`, or `"next background"`. `{}` turns it off |
 
 After changing anything except the hotkeys and mouse buttons, run `build_scenes.py` again. Hotkey and
@@ -386,9 +365,9 @@ podcast-deck/
 ├── build_scenes.py     Creates the sources and layout scenes in OBS from config.py
 ├── deck.py             The control window: buttons, hotkeys, mouse buttons
 ├── media.py            Background pictures and YouTube link handling for the deck
-├── positions.py        Camera spots and the guest permission switch, kept in OBS
-├── control.py          What the deck can do: on this PC's OBS (admin) or through the admin's deck (guests)
-├── link.py             The admin deck's door for guests: Tailscale only, invites, permission checks
+├── positions.py        Camera spots, layout settings, and backgrounds, kept in OBS
+├── control.py          What the deck can do with this PC's OBS
+├── link.py             The group: group links, everyone's camera IDs, VDO.Ninja links
 ├── obsconfig.py        Reads OBS's own remote-control settings, so nobody copies the password
 ├── configfile.py       Writes config.py from the first-launch window and Settings
 ├── Install.bat         One-click setup: Python, add-ons, desktop shortcut
@@ -409,7 +388,7 @@ podcast-deck/
 ├── version.py          The app's version; GitHub fills it in for each release
 ├── updater.py          The installed app's self-update from GitHub Releases
 ├── installer/          Inno Setup script for PodcastDeck-Setup.exe
-├── docs/               Download page and invite (join) page, served by GitHub Pages
+├── docs/               Download page and group (join) page, served by GitHub Pages
 ├── .github/workflows/  release.yml: builds and publishes the installer
 ├── .gitignore          Keeps config.py, build output, and caches out of git
 ├── LICENSE             MIT
@@ -424,12 +403,12 @@ https://github.com/TylerGaston22/podcast-deck/releases/latest/download/PodcastDe
 
 - **The installer** needs no Python, git, or admin rights. It installs to
   `C:\Users\<you>\AppData\Local\Programs\Podcast Deck`, adds desktop and Start menu shortcuts, and lets
-  `podcast-deck://` invite links open the deck.
+  `podcast-deck://` group links open the deck.
 - **Updates:** the installed deck checks for a newer release each time it opens and installs it by itself
-  (never mid-recording). `config.py`, backgrounds, and the guest list are kept.
-- **Invite links:** Invite / Join gives each guest a link to `docs/join.html`. That page walks them through
-  Tailscale (including your share link, if you add it), the download, and a **Join the show** button that
-  opens their deck with the invite. The invite rides after the `#`, so it never reaches any server.
+  (never mid-recording). `config.py` and backgrounds are kept.
+- **Group links:** Invite / Join gives you one link to `docs/join.html` for everyone. That page walks them
+  through the download, and its **Join the show** button opens their deck with the group. The group rides
+  after the `#`, so it never reaches any server.
 - **Releases** are built by GitHub (`.github/workflows/release.yml`) on Windows whenever the deck's code
   changes on `main`, numbered 1.0.1, 1.0.2, and so on. Run it by hand from the Actions tab if needed.
 - **Building it yourself:** `build_exe.bat` makes the same app in `dist\PodcastDeck\` (plus the installer
@@ -473,7 +452,7 @@ made and rebuilds the layouts. Your own scenes, and the settings of sources that
 alone. A deleted webcam source is set up again, webcam included.
 
 **A pasted background video doesn't show in OBS**
-The admin's deck has to be open, since OBS gets the background video from it. If you set up OBS before
+The deck has to be open, since OBS gets the background video from it. If you set up OBS before
 background videos existed, click **Settings…** → **Cameras** → **Repair layouts** once to add the Background Video
 source.
 
@@ -481,19 +460,15 @@ source.
 The video's owner has turned off playing it outside YouTube, or it's private, deleted, or
 age-restricted. Open it in a browser and use Browser + Cams instead.
 
-**A guest's deck says "Can't reach the admin's deck"**
-Check that Tailscale is running on both PCs, that the admin PC is shared with the guest in Tailscale,
-and that the admin's deck is open. The first time, Windows Firewall on the admin PC may ask whether
-Python can accept connections; allow it on private networks.
+**Someone's camera doesn't show up in my OBS**
+They need to click **Start my camera** and allow the camera in the browser tab, and keep it open. Their
+name has to match the one in your group (the row at the top): if they joined under another spelling, take
+the extra name off and ask them to rejoin with the link. A new person also needs your deck to know them:
+Invite / Join → Add, or paste the updated group link they sent.
 
-**A guest's deck says "The admin hasn't invited you"**
-Their invite was replaced or removed. The admin clicks **Settings…** → **Guests** → **Copy invite** and sends a new one.
-
-**The Guests window says Tailscale isn't running**
-Start Tailscale on the admin PC, then reopen the deck. The deck won't accept guests any other way.
-
-**A guest can't drag their camera**
-Their camera has to be in the current layout. Without full control they can only drag their own.
+**My own camera is black after joining a group**
+In a group, your camera reaches your OBS through VDO.Ninja like everyone's. Click **Start my camera**
+and allow the camera. Close other apps using the webcam first.
 
 **Re-running `build_scenes.py` reset my layout tweaks**
 It rebuilds the seven layouts from config every time, and cameras go back to their default spots
@@ -601,6 +576,14 @@ Ideas welcome: open an issue.
 - The empty Video + Cams box shows a card ("Video coming up", or a picture), set in Settings → Backgrounds.
 - ＋ New layout (empty, or a copy of another) and Save layout (every source, plus the background picture).
 - Drag layouts to reorder them; camera boxes fit each camera's real shape.
+
+**Everyone records their own show**
+
+- No more admin and guests. Everyone's in one group, and each person picks **Record my own show** (with
+  OBS) or **Camera only**. Nobody controls anyone else's OBS, and Tailscale isn't needed.
+- One group link for everyone (Invite / Join → Copy link); its page walks people through the download.
+- Cameras come through VDO.Ninja, with IDs worked out from the group and each person's name.
+- Who's on: green while someone's camera is showing in your OBS.
 
 **Updates itself**
 

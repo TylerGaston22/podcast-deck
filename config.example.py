@@ -10,27 +10,26 @@ OBS_PASSWORD = ""
 # The sizes below (cams, margins, the video box) are for 1920x1080 and scale with it.
 CANVAS_W, CANVAS_H = 1920, 1080
 
-# One cam per person, in the order they appear left → right.
-# Each becomes a "Cam - <name>" source. Webcams are picked automatically, or in the
-# deck's Settings. People sharing one camera in the same room share one name, e.g. "Couch".
+# Who's on your show, in the order their cams appear left → right. Each becomes a "Cam - <name>"
+# source. People on this PC use a webcam (picked automatically, or in the deck's Settings); people
+# sharing one camera in the same room share one name, e.g. "Couch". People in the group (below) show up
+# through VDO.Ninja instead.
 CAMS = ["Host 1", "Host 2", "Host 3"]
 
-# People joining online send their camera from their deck (Start my camera), and it's
-# added by itself. Only for adding a VDO.Ninja camera by hand, on the PC that runs OBS:
-REMOTE_CAMS = {
-    # "Host 2": "https://vdo.ninja/?view=<their id>",
-}
+# This PC. The first-launch window fills these in.
+# RECORD = True: this PC has OBS; you run your own show and record or stream it.
+# RECORD = False: camera only; you just send your camera to the group. No OBS needed.
+RECORD = True
+ME = ""            # your name in the group (and your cam's name)
 
-# Who is using this deck. The first-launch window fills these in.
-# Admin (the PC that runs OBS and records): ADMIN = True. ME is optional (your cam
-# name, so the screen map selects it first).
-# Guest: ADMIN = False and INVITE = the invite the admin sent. Guests don't need OBS.
-ADMIN = True
-ME = ""
-INVITE = ""
-CAMERA_ID = ""     # guest: your private VDO.Ninja ID, made by Start my camera
-DISPLAY_NAME = ""  # guest: the name shown on your camera. Change it in the deck's Settings
-DECK_PORT = 4460   # admin: where guests' decks connect, over Tailscale only
+# The group: everyone sending their camera to each other. Each person runs their own show (or just sends
+# a camera); nobody controls anyone else's OBS. Invite / Join in the deck makes and shares these.
+GROUP = ""         # the group's code, from its link. Anyone with it can see the group's cameras
+GROUP_PEOPLE = []  # everyone in the group, by name
+
+# Only for adding a VDO.Ninja camera by hand: "Host 2": "https://vdo.ninja/?view=<their id>"
+REMOTE_CAMS = {}
+
 THEME = "Stream Launcher"   # the deck's colors; pick in Settings → Look
 
 # Discord StreamKit "Voice Widget" URL — shows everyone's Discord icon and lights

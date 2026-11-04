@@ -6,7 +6,7 @@ The deck runs a tiny web server on this PC only (127.0.0.1, never the network). 
 - /bg: the control page (bg_control.html) opened in your browser after pasting a video link. You
   play, pause, mute, and seek there; nothing changes in OBS until you click "Use as background".
   After that, the same controls change the background video live.
-- /bg/state and /video/state: on the admin's deck, what OBS should show right now in each channel.
+- /bg/state and /video/state: what OBS should show right now in each channel.
 - /bg/frame?ch=…: the player OBS shows (bg_frame.html). OBS's "Background Video" and "Video Panel"
   sources are local files (bg_player.html, player.html) that load it from localhost, because YouTube
   won't play for pages opened by IP address.
@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import media
 
-ADMIN_PORT = 4461                              # OBS's Background Video page reads the admin's deck here
+ADMIN_PORT = 4461                              # OBS's Background Video page reads the deck here
 PAGE = os.path.join(media.APP_DIR, "bg_control.html")
 FRAME = os.path.join(media.APP_DIR, "bg_frame.html")
 MAX_BODY = 8 * 1024
@@ -139,7 +139,7 @@ class BgControl:
                 except Exception as e:  # noqa: BLE001 - the page shows whatever went wrong
                     self.reply(400, {"message": str(e)})
 
-        for port in ([ADMIN_PORT] if admin else []) + [0]:   # guests (or a second deck) take any free port
+        for port in ([ADMIN_PORT] if admin else []) + [0]:   # a second deck takes any free port
             try:
                 self.httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
                 break

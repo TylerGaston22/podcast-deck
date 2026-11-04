@@ -1,8 +1,8 @@
 ; Inno Setup script for PodcastDeck-Setup.exe. GitHub builds it (.github/workflows/release.yml):
 ;   iscc /DVersion=1.0.5 installer\PodcastDeck.iss
 ; Installs for this Windows user only (no admin prompt), adds the desktop and Start menu shortcuts, and
-; lets podcast-deck:// invite links open the deck. Running it again updates the deck in place; config.py,
-; backgrounds, and the guest list in the install folder are kept.
+; lets podcast-deck:// group links open the deck. Running it again updates the deck in place; config.py
+; and backgrounds in the install folder are kept.
 
 #ifndef Version
   #define Version "0.0.0"
@@ -36,8 +36,8 @@ Name: "{userdesktop}\Podcast Deck"; Filename: "{app}\PodcastDeck.exe"
 Name: "{userprograms}\Podcast Deck"; Filename: "{app}\PodcastDeck.exe"
 
 [Registry]
-; podcast-deck://… links (the Join button on an invite link's page) open the deck with that invite.
-Root: HKCU; Subkey: "Software\Classes\podcast-deck"; ValueType: string; ValueName: ""; ValueData: "URL:Podcast Deck invite"; Flags: uninsdeletekey
+; podcast-deck://… links (the Join button on a group link's page) open the deck with that group.
+Root: HKCU; Subkey: "Software\Classes\podcast-deck"; ValueType: string; ValueName: ""; ValueData: "URL:Podcast Deck group"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\podcast-deck"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\podcast-deck\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PodcastDeck.exe"" ""%1"""
 
