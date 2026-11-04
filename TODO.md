@@ -79,10 +79,10 @@ Nothing has been run against real OBS yet. Do this before building anything new.
 - [x] On GitHub: make the repo public.
 - [x] On GitHub: Settings → Pages → main, /docs. Live at https://tylergaston22.github.io/podcast-deck/
 - [x] The Actions tab shows a green **Release** run, and Releases has `PodcastDeck-Setup.exe`.
-- [ ] Download it from the download page and install: shortcut on the desktop, deck opens. Your current
-      setup (config.py, backgrounds) lives in the old folder; copy them into
-      `C:\Users\<you>\AppData\Local\Programs\Podcast Deck` to keep them.
-- [ ] The installed deck connects to OBS and builds layouts (the player pages load from the install folder).
+- [ ] Download it from the download page and install fresh: shortcut on the desktop, the first-launch
+      window opens.
+- [ ] With an OBS that already has layouts (from the source folder): the installed deck rebuilds them for
+      its own names and points the video pages at the install folder. Your own scenes aren't touched.
 - [ ] Updates: after a new release, opening the installed deck updates it and reopens it.
 - [ ] Invite / Join → Copy link: it opens the join page with everyone's names.
 - [ ] On another PC: the join page's Join the show opens the deck (fresh install: the first-launch screen

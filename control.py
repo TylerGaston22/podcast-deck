@@ -89,6 +89,21 @@ class Local:
         build_scenes.build(cl, log=lambda _line: None, keep_scene=keep_scene)
         self.ids.clear()
 
+    def _out_of_date(self, cl):
+        """True if OBS's layouts don't match this deck: a camera missing for someone on the show, or the video
+        pages pointing at another folder (made by another copy of the deck, like a source folder)."""
+        inputs = {i["inputName"] for i in cl.get_input_list().inputs}
+        if any(f"Cam - {name}" not in inputs for name in self.cfg.CAMS):
+            return True
+        for page, file in (("Video Panel", "player.html"), ("Background Video", "bg_player.html")):
+            try:
+                found = cl.get_input_settings(page).input_settings.get("local_file", "")
+            except OBSSDKRequestError:
+                return True
+            if os.path.normcase(os.path.abspath(found)) != os.path.normcase(os.path.join(media.APP_DIR, file)):
+                return True
+        return False
+
     def _pick_webcams(self, cl):
         """Give every webcam source with no device picked yet the next unused camera. True when none are left
         without one (or there's nothing to pick from)."""
@@ -143,6 +158,10 @@ class Local:
             if HIDDEN_LIB not in scenes:       # a fresh OBS: set everything up without being asked
                 self._build(cl)
                 self.note = "Layouts set up in OBS. Pick webcams any time in Settings."
+                scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes)]
+            elif self._out_of_date(cl):        # layouts from another copy of the deck, or other people
+                self._build(cl, keep_scene=cl.get_current_program_scene().current_program_scene_name)
+                self.note = "Layouts updated for everyone on your show."
                 scenes = [s["sceneName"] for s in reversed(cl.get_scene_list().scenes)]
             else:
                 self._reset_all(cl)            # a new session starts from the default camera spots
