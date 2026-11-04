@@ -297,7 +297,8 @@ Repair layouts won't bring back a layout you deleted on purpose; **Bring back de
   extras, Background ▾ lists them first (★ marks the default) and `ctrl+alt+b` steps through just those.
 - **Group**: switch this PC to camera only, and Invite / Join.
 - **Hotkeys**: change any hotkey.
-- **Help**: How it works.
+- **Help**: setup steps (including turning on OBS's remote control by hand), every session, layouts, fixes
+  for common problems, the version, and how the group works.
 - **Look**: four color schemes (Stream Launcher, Electric blue, Violet, Teal + orange). It changes right
   away and is remembered on this PC; the browser control pages follow it.
 

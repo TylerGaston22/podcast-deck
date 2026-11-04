@@ -78,6 +78,76 @@ if configfile.load() is not None:              # no config.py yet: the welcome w
     use_config(configfile.load())
 
 
+# Settings → Help: how to set up and use everything, in order. (heading, text) pairs; "• " lines are steps.
+HELP_RECORD = [
+    ("Set up this PC (once)",
+     "• Install OBS Studio from obsproject.com and open it once.\n"
+     "• Open Podcast Deck, then OBS. The deck connects by itself, builds every layout, and picks your webcam."),
+    ("If the deck can't reach OBS (OBS OFFLINE)",
+     "The deck needs OBS's remote control (its WebSocket server). The deck turns it on for you: close OBS once "
+     "and open it again. To do it by hand:\n"
+     "• In OBS: Tools → WebSocket Server Settings.\n"
+     "• Tick Enable WebSocket server, then OK. Leave the password as it is; the deck reads it from OBS."),
+    ("Invite people",
+     "• Click Invite / Join (top right) → Copy link, and send it to everyone on the show.\n"
+     "• Someone new later: Invite / Join → Add, type their name, and send the new link (it's copied for you).\n"
+     "• Names have to match: everyone joins with the name the others typed."),
+    ("Every session",
+     "• Open OBS, then Podcast Deck.\n"
+     "• In a group with others: click Start my camera, allow the camera and mic, and keep that tab open.\n"
+     "• Click Record (or ctrl+alt+r)."),
+    ("Layouts and backgrounds",
+     "• Click a layout, or press its hotkey, to switch to it. Its + panel has Background, Paste link, Play link "
+     "(Video + Cams), and Save layout.\n"
+     "• Drag a camera on the screen map to move it; drag its corner to resize it.\n"
+     "• Change hotkeys in Settings → Hotkeys, webcams and the browser window in Settings → Cameras."),
+    ("Something's wrong",
+     "• Something missing in OBS: Settings → Cameras → Repair layouts.\n"
+     "• Someone's camera is black: they need to click Start my camera and keep the tab open, and their name has "
+     "to match the one at the top.\n"
+     "• Hotkeys don't work in a game: the game runs as administrator, so run Podcast Deck as administrator too "
+     "(right-click it → Run as administrator).\n"
+     "• Windows says it protected your PC when installing: More info → Run anyway."),
+    ("Updates",
+     "The deck updates itself each time it opens (never while recording). The version is below."),
+]
+HELP_CAMERA = [
+    ("Every session",
+     "• Open Podcast Deck and click Start my camera.\n"
+     "• Allow the camera and mic in the browser tab, and keep it open while you're on."),
+    ("Join a group",
+     "• Open the group link you were sent and click Join the show, or click Invite / Join and paste the link.\n"
+     "• Use the name the others know you by (Settings → Your name)."),
+    ("Want to record your own show?",
+     "• Install OBS Studio from obsproject.com and open it once.\n"
+     "• Settings → Record my own show. The deck reopens, sets up every layout, and shows everyone's camera."),
+    ("Something's wrong",
+     "• The others can't see you: make sure the camera tab is open and allowed, and your name matches the "
+     "group's.\n"
+     "• Windows says it protected your PC when installing: More info → Run anyway."),
+]
+
+
+def help_text(parent, topics):
+    """A scrolling, read-only page of help topics."""
+    frame = tk.Frame(parent, bg=BG)
+    frame.pack(fill="both", expand=True, pady=(4, 0))
+    text = tk.Text(frame, width=58, height=16, bg=BG, fg=INK_DIM, relief="flat", wrap="word", font=STATUS_FONT,
+                   highlightthickness=0, padx=0, pady=0, cursor="arrow")
+    bar = tk.Scrollbar(frame, command=text.yview)
+    text.configure(yscrollcommand=bar.set)
+    bar.pack(side="right", fill="y")
+    text.pack(side="left", fill="both", expand=True)
+    text.tag_configure("head", foreground=INK, font=FONT, spacing1=10, spacing3=4)
+    text.tag_configure("step", lmargin1=4, lmargin2=16, spacing1=2)
+    for title, body in topics:
+        text.insert("end", title + "\n", "head")
+        for line in body.split("\n"):
+            text.insert("end", line + "\n", "step")
+    text.configure(state="disabled")
+    return text
+
+
 INSTANCE_PORT = 4462                           # a deck that's already open listens here for group links
 INSTANCE_HELLO = b"PODCAST-DECK-INVITE "
 
@@ -469,12 +539,11 @@ class Deck:
         self.fill_hotkeys(hotkeys)
 
         help_page = page("Help")
-        heading(help_page, "Help", first=True)
-        note(help_page, "How the group works, what each deck can do, and how it's kept safe.")
+        help_text(help_page, HELP_RECORD)
         note(help_page, f"Version {updater.VERSION}" + ("" if updater.installed() else " (running from the source "
                                                         "folder)"), MUTED)
-        self.small_key(help_page, "How it works", lambda: subprocess.Popen(["notepad.exe", NOTES])).pack(
-            anchor="w", pady=(4, 0))
+        self.small_key(help_page, "More: how the group works and stays safe", lambda: subprocess.Popen(
+            ["notepad.exe", NOTES])).pack(anchor="w", pady=(4, 0))
 
         look_page = page("Look")
         heading(look_page, "Color scheme", first=True)
@@ -2023,8 +2092,10 @@ class CameraDeck(Deck):
         tk.Label(win, text="Have OBS? Record your own show here, with everyone's cameras.", bg=BG, fg=INK_DIM,
                  font=STATUS_FONT, anchor="w").pack(fill="x")
         self.small_key(win, "Record my own show…", self.switch_mode).pack(anchor="w", pady=(6, 0))
+        tk.Label(win, text="Help", bg=BG, fg=INK, font=FONT, anchor="w").pack(fill="x", pady=(16, 0))
+        help_text(win, HELP_CAMERA).configure(height=10)
         tk.Label(win, text=f"Version {updater.VERSION}", bg=BG, fg=MUTED, font=STATUS_FONT, anchor="w").pack(
-            fill="x", pady=(16, 0))
+            fill="x", pady=(8, 0))
         self.key(win, "Close", win.destroy).pack(anchor="e", pady=(8, 0))
 
 
